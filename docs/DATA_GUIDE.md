@@ -1,0 +1,260 @@
+# Alpha-Data 数据指南
+
+本文说明 Alpha-Data 已产出的数据、目录结构、口径，以及如何用 API 访问与使用。所有数据位于
+`data/`（不入库，见 `.gitignore`）。代码示例默认在项目 venv 下运行：`.venv/bin/python`。
+
+## 1. 概览与统计
+
+| 数据层 | 内容 | 规模 | 时间范围 |
+|---|---|---|---|
+| 美股分钟线 | 全市场 1min OHLCV（原始未复权） | **25.9 亿** bar，21,855 标的，36 GB | 2020-01-02 .. 2026-06-29 |
+| 美股日线 | 由 RTH 分钟聚合 | 1671 万行，21,854 标的，466 MB | 同上 |
+| 公司行动 | 拆股 + 分红 | 142.9 万行，69,392 标的 | 2019-01-02 起 |
+| 上市表 | 标的元数据（含退市，无幸存者偏差） | 32,354 标的（active 12,125） | — |
+| Polymarket `daily_aligned` | 清洗后逐笔（防前视分析层） | 6.02 亿行，13.2 GB | 2022-11-21 .. 2026-04-28 |
+| Polymarket `ctf` / `orderfilled` | 生命周期 / 原始 tape | 8.39 亿 / 12.0 亿行 | 同上 |
+| Polymarket 市场目录 | 成交额≥$10万的市场 | 29,634 个 | — |
+| Polymarket 特征面板 | 市场级、防前视、美东分钟网格 | 284,741 行（示例，5 个宏观市场） | — |
+
+分钟 bar 总数含盘前盘后（RTH 仅约六成）。
+
+## 2. 目录结构
+
+```text
+data/
+  equity/
+    flatfiles/us_stocks_sip/minute_aggs_v1/YYYY/MM/YYYY-MM-DD.csv.gz   # 原始下载（构建后可删）
+    minute_db/                        # AlphaForge MinuteDB 布局（消费入口）
+      minute/{SYMBOL}/{YEAR}.parquet  # 分钟 bar，按 symbol/year 分区
+      daily/{SYMBOL}.parquet          # 日线（一 symbol 一文件，含全部交易日）
+      corp_actions.parquet            # 公司行动
+      listing.parquet                 # 上市表
+    reference/                        # 参考数据独立副本（listing/splits/dividends/corp_actions）
+  polymarket/
+    daily_aligned/*.parquet           # 1248 个按日分区文件
+    CTF/{preparations,splits,merges,resolutions,redemptions}.parquet
+    OrderFilled/*.parquet
+    features/market_catalog.parquet   # 市场目录
+    features/market_features.parquet  # 特征宽表
+```
+
+`{SYMBOL}` 为文件系统安全化的大写 ticker（非法字符替 `_`，与 AlphaForge `MinuteDB._safe_symbol` 一致）。
+
+## 3. 美股分钟线
+
+### 3.1 口径（重要）
+
+- **原始未复权**价。复权因子在本地由拆股 / 分红计算（见 §4）。
+- `minute` / `ts` 为 **bar 收盘时刻**（区间结束），美东本地时间。RTH 为 `09:31`..`16:00`（390 bar/日），
+  含盘前盘后为 `04:01`..`20:00`。这与 AlphaForge `core/schema.py` 及 `is_rth`（`09:30 < 收盘戳 <= 16:00`）一致。
+- Flat Files 分钟聚合**无 vwap**；`trade_count` 取原始 `transactions`。下游 `amount` = `close×volume`。
+- 半日（提前 13:00 收盘）自动处理。缺数据不填充。
+
+### 3.2 访问方式 A —— AlphaForge `MinuteDB`（推荐，契约口径）
+
+需要装 AlphaForge（`pip install -e <AlphaForge 路径>`）。`read_minute` 返回 AlphaForge 契约列。
+
+```python
+from alphaforge.providers.db.minute_db import MinuteDB
+
+db = MinuteDB("data/equity/minute_db")
+
+# 分钟（RTH），返回 [trade_date, minute, symbol, open, high, low, close, volume, trade_count]
+m = db.read_minute(["AAPL", "MSFT"], "2024-03-01", "2024-03-05", rth_only=True)
+print(m.head())
+
+# 日线，返回 [symbol, trade_date, open, high, low, close, volume, amount, source]
+d = db.read_daily(["AAPL"], "2024-01-01", "2024-12-31")
+
+# 公司行动 [symbol, ex_date, split_ratio, cash_div]（无则 None）
+ca = db.read_corp_actions(["AAPL"])
+
+syms = db.symbols()          # 约 2.2 万标的，~0.4s
+# 交易日：务必传基准标的（如 SPY）。不传 symbols 会扫描全部 21k+ 标的的分钟数据，极慢！
+tdays = db.trading_days("2024-03-01", "2024-03-31", symbols=["SPY"])
+```
+
+> 大规模注意：本库约 2.2 万标的。凡是**读取全部标的分钟数据**的调用在本规模下很慢（分钟级）：
+> `db.trading_days(start, end)`（不传 `symbols`）、`DbMinuteSource.trading_days()`、
+> `DbMinuteSource.universe_candidates()`。`read_minute` / `read_daily` / `read_corp_actions`（传定标的）
+> 与 `db.symbols()` / `symbol_meta()` 都很快。交易日与全市场选池请传基准标的或改用 DuckDB（见 §3.4）。
+
+取**交易日历**最省事（NYSE 日历，不读数据、瞬时，含半日 / 节假日处理）：
+
+```python
+from alpha_data.common import calendar
+tdays = calendar.trading_days("2024-03-01", "2024-03-31")   # ['2024-03-01', '2024-03-04', ...]
+```
+
+这与「库中实际有数据的交易日」一般一致；唯一差异是尚未下载的日子（如今天的文件未定版），
+日历会含它、库不含。需要「库中实际存在」的口径时用 `db.trading_days(..., symbols=["SPY"])` 或 DuckDB（§3.4）。
+
+### 3.3 访问方式 B —— `DbMinuteSource`（DataSource 协议，喂 build_panel）
+
+```python
+from alphaforge.providers.db.minute_db import MinuteDB
+from alphaforge.providers.db.source import DbMinuteSource
+
+src = DbMinuteSource(MinuteDB("data/equity/minute_db"), rth_only=True)
+panel = src.read_minute(["2024-03-01", "2024-03-04"], ["AAPL"])   # 定标的定日期，快；含 amount 列
+meta = src.symbol_meta()                          # [symbol, exchange, name]，取自 listing
+# 注意：src.trading_days() 与 src.universe_candidates() 会读取全部标的分钟数据，本规模下很慢。
+# 交易日 / 全市场选池请用 DuckDB（见 §3.4）。
+```
+
+### 3.4 访问方式 C —— DuckDB 直查（快速探索，无需 AlphaForge）
+
+分钟 parquet 内部列：`symbol, ts, open, high, low, close, volume, trade_count, source, ingested_utc, raw_hash`。
+`trade_date` / `minute` 由 `ts` 派生。
+
+```python
+import duckdb
+con = duckdb.connect()
+
+# 单标的一年
+con.sql("""
+  SELECT strftime(ts,'%Y-%m-%d') AS trade_date, strftime(ts,'%H:%M') AS minute,
+         open, high, low, close, volume, trade_count
+  FROM read_parquet('data/equity/minute_db/minute/AAPL/2024.parquet')
+  WHERE strftime(ts,'%H:%M') > '09:30' AND strftime(ts,'%H:%M') <= '16:00'   -- 仅 RTH
+  ORDER BY ts LIMIT 5
+""").show()
+
+# 跨标的、按日聚合成交额（读日线更快）
+con.sql("""
+  SELECT trade_date, sum(amount) AS mkt_amount
+  FROM read_parquet('data/equity/minute_db/daily/*.parquet')
+  WHERE trade_date BETWEEN '2024-03-01' AND '2024-03-31'
+  GROUP BY trade_date ORDER BY trade_date
+""").show()
+
+# 交易日列表（从 SPY 日线，快）
+con.sql("""SELECT DISTINCT trade_date FROM read_parquet('data/equity/minute_db/daily/SPY.parquet')
+           WHERE trade_date BETWEEN '2024-03-01' AND '2024-03-31' ORDER BY 1""").show()
+
+# 某日全市场有成交的选池（读全部日线文件，约数秒；比读全部分钟数据快得多）
+con.sql("""SELECT symbol FROM read_parquet('data/equity/minute_db/daily/*.parquet')
+           WHERE trade_date='2024-03-01' AND volume>0 ORDER BY symbol""").show()
+```
+
+注意：`minute/*/*.parquet` 通配约 8 万个文件，全量扫描较慢；按 `SYMBOL` / `YEAR` 精确定位最快。
+
+### 3.5 增量 / 补缺 —— `MassiveProvider`（REST）
+
+批量历史已入库；单标的、指定区间的按需拉取用此（REST `/v2/aggs`，与 Flat Files 同口径）。
+
+```python
+from alpha_data.common.env import load_env
+from alpha_data.equity.provider import MassiveProvider
+
+load_env()                                        # 读取 .env 的 MASSIVE_API_KEY
+p = MassiveProvider()
+res = p.fetch("AAPL", "2026-06-25", "2026-06-29") # FetchResult
+print(res.status, res.n_bars, res.bars[0])        # bars[i].ts 为收盘时刻、美东
+```
+
+### 3.6 字段
+
+分钟（AlphaForge `read_minute` 口径）：`trade_date`(str YYYY-MM-DD)、`minute`(str HH:MM 收盘戳)、
+`symbol`(str)、`open/high/low/close`(float32 原始未复权)、`volume`(int64)、`trade_count`(int64)、
+（经 `DbMinuteSource` 时）`amount`=close×volume。
+
+日线：`symbol`、`trade_date`、`open/high/low/close`(float32)、`volume`(int64)、`amount`(float64)、`source`。
+
+## 4. 参考数据与复权
+
+- `listing.parquet`：`symbol, name, exchange, status, ipo_date, delist_date`。`exchange` 为 MIC 码
+  （`XNAS`=Nasdaq、`XNYS`=NYSE、`ARCX`=NYSE Arca 等）。`ipo_date` 暂空。
+- `corp_actions.parquet`：`symbol, ex_date, split_ratio, cash_div`。拆股 2:1 记 `split_ratio=2.0`，
+  无拆股记 `1.0`；`cash_div` 为每股现金分红。
+- `reference/{splits,dividends}.parquet`：原始拆股 / 分红副本。
+
+复权因子（后复权比值，从最新往回累乘拆股）示例：
+
+```python
+import duckdb, pandas as pd
+con = duckdb.connect()
+daily = con.sql("SELECT trade_date, close FROM read_parquet('data/equity/minute_db/daily/AAPL.parquet') ORDER BY trade_date").df()
+ca = con.sql("SELECT ex_date, split_ratio FROM read_parquet('data/equity/minute_db/corp_actions.parquet') WHERE symbol='AAPL' AND split_ratio<>1").df()
+
+# 除权日当日及以后价格 ÷ split_ratio 以拼接连续（仅拆股口径；分红总收益另计 cash_div）
+daily = daily.sort_values("trade_date").reset_index(drop=True)
+daily["adj_factor"] = 1.0
+for _, r in ca.iterrows():
+    daily.loc[daily["trade_date"] < r["ex_date"], "adj_factor"] /= r["split_ratio"]
+daily["close_adj"] = daily["close"] * daily["adj_factor"]
+```
+
+## 5. Polymarket
+
+### 5.1 层与用途
+
+- `daily_aligned`（**推荐分析层**）：已去中继腿、补元数据、归一。逐笔成交 + 真值方向。
+- `ctf`：Conditional Tokens 生命周期（铸造 / 销毁 / 解析 / 赎回），做初级市场 / 洗量识别。
+- `orderfilled`：原始链上 tape，含中继腿，需自行过滤。
+
+### 5.2 `daily_aligned` 关键字段
+
+`block_timestamp`(int64 秒级 UTC)、`price`([0,1] 概率)、`p_event`(归一事件概率)、`D`(归一方向 ±1)、
+`taker_direction`(BUY/SELL 真值)、`usdc_amount`(名义额)、`condition_id`(市场键)、`market_slug`、
+`category`/`category_refined`、`outcome_label`/`winning_outcome_label`、`opens_at`/`close_at`/`resolved_at`(tz UTC)。
+
+### 5.3 DuckDB 直查
+
+```python
+import duckdb
+con = duckdb.connect()
+con.execute("SET TimeZone='UTC'")
+
+# 某市场的概率轨迹（转美东时间）
+con.sql("""
+  SELECT timezone('America/New_York', to_timestamp(block_timestamp)) AS et_ts,
+         price, p_event, D, usdc_amount
+  FROM read_parquet('data/polymarket/daily_aligned/*.parquet')
+  WHERE market_slug = 'fed-rate-cut-by-september-18'
+  ORDER BY block_timestamp LIMIT 10
+""").show()
+```
+
+### 5.4 市场目录与特征
+
+```python
+from alpha_data.polymarket import catalog, features, store
+
+con = store.connect()
+cat = catalog.build_catalog(con, min_usdc=100_000)            # 约 4s
+hits = catalog.search(cat, ["fed-rate-cut", "recession"], top=5)   # 按 slug 关键词
+
+# 单市场分钟特征（防前视）
+cid = hits.iloc[0]["condition_id"]
+feat = features.build_market_minute_features(con, cid)
+```
+
+或一次性构建宏观主题特征宽表：`.venv/bin/python scripts/build_polymarket_features.py`
+（产物 `data/polymarket/features/market_features.parquet`）。
+
+### 5.5 特征面板字段
+
+`trade_date`、`minute`（美东，与美股同网格），以及每个市场 `{key}_` 前缀的：
+`p`(p_event LOCF)、`dp_intraday`(相对当日开盘)、`dp_overnight`(相对前一交易日收盘)、
+`flow_session`(自开盘累计带方向净额)、`usdc_session`、`n_session`。全部只用严格早于 bar 起始的成交，
+市场解析后置空。作为宏观 / 事件替代数据在 `(trade_date, minute)` 上广播到全体标的。
+
+## 6. 环境与凭证
+
+- venv：`.venv`（`pandas_market_calendars`、`duckdb`、`boto3`、`huggingface_hub` 等）。
+- 凭证：`.env`（不入库，模板 `.env.example`）：`MASSIVE_API_KEY`、`MASSIVE_S3_*`、`HF_TOKEN`。
+- 重建：`scripts/download_equity_flatfiles.py` → `scripts/build_minute_db.py` →
+  `scripts/build_reference.py`；Polymarket `scripts/download_polymarket.py` → `build_polymarket_features.py`。
+
+## 7. 注意事项
+
+- 价格原始未复权；复权自算（§4）。
+- 分钟 / 日线时间为 **bar 收盘戳**、美东本地；RTH `09:31`..`16:00`。
+- `exchange` 为 MIC 码（可后续映射为 NASDAQ/NYSE 友好名）。
+- Polymarket 时间为 UTC、7×24 连续；归并到美股分钟网格须重采样并**防前视**（只用早于目标 bar 的 `p_event`）。
+- Polymarket 是宏观 / 事件概率，非逐 symbol 行情；默认市场级广播。
+- 缺数据不填充；`corp_actions` 含大量非普通股证券（ETF / 基金 / ADR），按 symbol 过滤即可。
+- **规模注意**：MinuteDB 读取全部标的分钟数据的调用（`trading_days()` 不传 symbols、
+  `DbMinuteSource.trading_days()` / `universe_candidates()`）在 2.2 万标的下很慢；交易日 / 选池请用
+  DuckDB 日线（§3.4）或对 `trading_days` 传基准标的（如 `SPY`）。定标的的 `read_minute` 等都很快。
