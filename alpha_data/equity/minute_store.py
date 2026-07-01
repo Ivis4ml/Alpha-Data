@@ -21,6 +21,8 @@ from pathlib import Path
 
 import duckdb
 
+from alpha_data.common.hashing import content_hash
+
 # 与 MinuteDB._safe_symbol 一致的文件系统安全化。
 _SAFE = r"regexp_replace(upper(ticker), '[^A-Za-z0-9_.\-]', '_', 'g')"
 # window_start 纳秒 UTC 为 bar 起始；+60s 得 bar 收盘时刻，再转美东本地。
@@ -43,12 +45,21 @@ def _duck_list(paths: list[Path]) -> str:
     return "[" + ", ".join("'" + p.as_posix().replace("'", "''") + "'" for p in paths) + "]"
 
 
+def _input_fingerprint(paths: list[Path]) -> str:
+    """输入文件集的指纹（文件名 + 大小），供续传前校验输入未变化。"""
+    parts = sorted((p.name, p.stat().st_size if p.exists() else -1) for p in paths)
+    return content_hash(parts)
+
+
 def _reorg_partitions(
     con: duckdb.DuckDBPyConnection, tmp: Path, dst_for, *, skip_existing: bool = False
 ) -> int:
     """把 ``tmp/_safe=X/*.parquet`` 归并到 ``dst_for(X)``（单文件直接移动，多文件合并）。
 
     ``skip_existing=True`` 时，目标已存在的分区直接跳过（可续传：中断后重跑只补未完成的）。
+    两条路径的目标写入均为原子操作：单文件走同文件系统 rename；多文件先合并到临时
+    ``*.parquet.merge`` 再 rename，中断不会留下截断的目标 parquet（残留的 ``.merge``
+    下次重跑会被覆盖后原子替换）。
     """
     n = 0
     for part in sorted(tmp.glob("_safe=*")):
@@ -63,10 +74,12 @@ def _reorg_partitions(
         if len(files) == 1:
             shutil.move(str(files[0]), str(dst))
         else:
+            merge_tmp = dst.with_name(dst.name + ".merge")
             con.execute(
                 f"COPY (SELECT * FROM read_parquet({_duck_list(files)})) "
-                f"TO '{dst.as_posix()}' (FORMAT parquet, COMPRESSION zstd)"
+                f"TO '{merge_tmp.as_posix()}' (FORMAT parquet, COMPRESSION zstd)"
             )
+            merge_tmp.replace(dst)
         n += 1
     shutil.rmtree(tmp, ignore_errors=True)
     return n
@@ -81,8 +94,17 @@ def build_minute(
 ) -> int:
     """把分钟 CSV.gz 写入 ``minute/{safe}/{year}.parquet``。返回写出的 (symbol,year) 分区数。
 
-    每年成功后写 ``minute/.done_{year}`` 标记；``skip_done=True`` 时跳过已标记的年份（可续传）。
-    未标记的年份会重建并覆盖其残留分区。
+    每年两阶段、可续传，状态机如下：
+
+    1. 全新构建（无 ``.copydone_{year}``、暂存目录缺失、或输入指纹与标记不符）：先删除该年
+       已有的 ``minute/*/{year}.parquet`` 残留分区（重建即整年替换，删旧保证不会静默保留
+       过期数据），再 COPY 出暂存分区并把输入指纹写入 ``.copydone_{year}``，随后归并
+       （此时目标必为空，全部移入）。
+    2. 归并续传（``.copydone_{year}`` 与暂存目录均存在，且标记内的输入指纹与本次一致）：
+       跳过 COPY，仅归并；目标已存在的分区来自同一次 COPY 的已完成移动，跳过即可。
+       指纹校验保证"COPY 后中断、随后补充下载新文件再重跑"不会把旧暂存误当续传而丢新数据。
+
+    年份全部归并后写 ``minute/.done_{year}``；``skip_done=True`` 时跳过已标记年份。
     """
     db_root = Path(db_root)
     minute_dir = db_root / "minute"
@@ -94,10 +116,16 @@ def build_minute(
             continue
         tmp = db_root / f".tmp_minute_{year}"
         copydone = minute_dir / f".copydone_{year}"
-        # 若 COPY 阶段已完成（有 copydone 标记且暂存在），则跳过重读，直接续做归并。
-        if not (copydone.exists() and tmp.exists()):
+        fingerprint = _input_fingerprint(paths)
+        resumed = (
+            copydone.exists() and tmp.exists() and copydone.read_text() == fingerprint
+        )
+        if not resumed:
             shutil.rmtree(tmp, ignore_errors=True)
             copydone.unlink(missing_ok=True)
+            # 整年重建：先清掉旧分区，避免归并阶段把过期数据误当作已完成而保留。
+            for stale in minute_dir.glob(f"*/{year}.parquet"):
+                stale.unlink()
             select = f"""
                 SELECT {_SAFE} AS _safe,
                        upper(ticker)                       AS symbol,
@@ -118,10 +146,10 @@ def build_minute(
                 f"COPY ({select}) TO '{tmp.as_posix()}' "
                 f"(FORMAT parquet, PARTITION_BY (_safe), COMPRESSION zstd)"
             )
-            copydone.write_text("ok")
+            copydone.write_text(fingerprint)
         total += _reorg_partitions(
             con, tmp, lambda safe, y=year: minute_dir / safe / f"{y}.parquet",
-            skip_existing=True,
+            skip_existing=resumed,
         )
         copydone.unlink(missing_ok=True)
         marker.write_text("ok")
@@ -131,16 +159,25 @@ def build_minute(
 def build_daily(con: duckdb.DuckDBPyConnection, csv_paths: list[Path], db_root: Path) -> int:
     """由 RTH 分钟聚合出日线，写入 ``daily/{safe}.parquet``（一文件含该 symbol 全部交易日）。
 
-    可续传：COPY 完成后写 ``.copydone_daily`` 标记；中断后重跑跳过 COPY、只补未归并的分区。
+    重要：``csv_paths`` 必须是**完整**的 Flat Files 集合（全部已下载交易日），不能只传
+    部分区间。日线一 symbol 一文件、覆盖全部交易日，每次构建整体替换：全新构建会先清空
+    旧的 ``daily/*.parquet``，只传部分区间会把区间外的日线数据一并清掉。
+
+    与 :func:`build_minute` 同一状态机：全新构建先清旧、COPY 完成后把输入指纹写入
+    ``.copydone_daily``；归并续传（标记与暂存俱在、指纹一致）时跳过 COPY、只补未移动的分区。
     """
     db_root = Path(db_root)
     db_root.mkdir(parents=True, exist_ok=True)
     daily_dir = db_root / "daily"
     tmp = db_root / ".tmp_daily"
     copydone = db_root / ".copydone_daily"
-    if not (copydone.exists() and tmp.exists()):
+    fingerprint = _input_fingerprint(csv_paths)
+    resumed = copydone.exists() and tmp.exists() and copydone.read_text() == fingerprint
+    if not resumed:
         shutil.rmtree(tmp, ignore_errors=True)
         copydone.unlink(missing_ok=True)
+        for stale in daily_dir.glob("*.parquet"):
+            stale.unlink()
         inner = f"""
             SELECT {_SAFE} AS _safe, upper(ticker) AS symbol,
                    strftime({_ET}, '%Y-%m-%d') AS trade_date,
@@ -165,7 +202,9 @@ def build_daily(con: duckdb.DuckDBPyConnection, csv_paths: list[Path], db_root: 
             f"COPY ({agg}) TO '{tmp.as_posix()}' "
             f"(FORMAT parquet, PARTITION_BY (_safe), COMPRESSION zstd)"
         )
-        copydone.write_text("ok")
-    n = _reorg_partitions(con, tmp, lambda safe: daily_dir / f"{safe}.parquet", skip_existing=True)
+        copydone.write_text(fingerprint)
+    n = _reorg_partitions(
+        con, tmp, lambda safe: daily_dir / f"{safe}.parquet", skip_existing=resumed
+    )
     copydone.unlink(missing_ok=True)
     return n

@@ -57,8 +57,17 @@ def main() -> int:
         print(f"  分钟：写出 {n_min} 个 (symbol,year) 分区")
 
     if args.daily_only or not args.no_daily:
-        print("构建日线……", flush=True)
-        n_day = minute_store.build_daily(con, existing, Path(args.db))
+        # 日线是整体替换（一 symbol 一文件、覆盖全部交易日），必须用全部已下载文件构建；
+        # 只传 --start/--end 子集会把区间外的日线清掉，故此处不使用区间过滤。
+        all_files = sorted(
+            (FLAT_ROOT / flatfiles.MINUTE_PREFIX).glob("*/*/*.csv.gz")
+        )
+        print(
+            f"构建日线……（整体替换，使用全部已下载文件 {len(all_files)} 个，"
+            f"与 --start/--end 无关）",
+            flush=True,
+        )
+        n_day = minute_store.build_daily(con, all_files, Path(args.db))
         print(f"  日线：写出 {n_day} 个 symbol 文件")
 
     con.close()

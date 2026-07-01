@@ -47,6 +47,16 @@ def main() -> int:
     dividends = reference.fetch_dividends(client, since=args.since, until=until)
     print(f"  分红 {len(dividends)}")
 
+    # splits/dividends 端点对类别股返回无点 ticker（BFB/MOGA），映射回带点原生形式（BF.B/MOG.A）
+    # 以与分钟库、listing 一致；否则这些标的的公司行动在下游永远匹配不上。
+    canonical = listing["symbol"]
+    splits = reference.remap_to_native_symbols(splits, canonical)
+    dividends = reference.remap_to_native_symbols(dividends, canonical)
+    n_dotted = int(splits["symbol"].str.contains(".", regex=False).sum()) + int(
+        dividends["symbol"].str.contains(".", regex=False).sum()
+    )
+    print(f"  类别股符号回映射完成（映射后带点行数 {n_dotted}）")
+
     corp = reference.build_corp_actions(splits, dividends)
     print(f"  corp_actions 合并 {len(corp)} 行")
 

@@ -71,9 +71,8 @@ class MassiveProvider:
         try:
             rows = list(self.client.paginate(path, params))
         except MassiveError as exc:
-            note = str(exc)
-            status = "rate_limited" if ("429" in note or "限速" in note) else "error"
-            return FetchResult(bars=[], status=status, note=f"massive: {note}")
+            status = "rate_limited" if exc.status_code == 429 else "error"
+            return FetchResult(bars=[], status=status, note=f"massive: {exc}")
 
         bars: list[dict] = []
         for r in rows:
@@ -99,9 +98,8 @@ class MassiveProvider:
             return FetchResult(
                 bars=[], status="empty", note=f"massive: {sym} {start}..{end} 无 bar"
             )
-        raw_hash = content_hash(
-            sym, start, end, extended_hours, len(bars), bars[0]["ts"], bars[-1]["ts"]
-        )
+        # 对全部 bar 内容取哈希：同区间同 bar 数的价格修订（restatement）也要能被检测到。
+        raw_hash = content_hash(sym, start, end, extended_hours, bars)
         return FetchResult(
             bars=bars, status="ok", note=f"massive: {len(bars)} bars", raw_hash=raw_hash
         )
