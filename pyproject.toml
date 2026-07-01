@@ -1,0 +1,35 @@
+[project]
+name = "alpha-data"
+version = "0.1.0"
+description = "为 Alpha-Forge 准备数据：美股分钟线（massive.com）+ Polymarket 预测市场（HuggingFace）"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "huggingface_hub>=1.0",
+    "hf_xet>=1.0",
+    "boto3>=1.34",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "duckdb>=1.1",
+    "polars>=1.9",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6", "pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["alpha_data"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
