@@ -44,7 +44,7 @@ Alpha-Data 为消费方项目 **Alpha-Forge**（本机路径 `/Users/xinyu/Code/
 
 - `trade_date`：`YYYY-MM-DD` 字符串。
 - `minute`：`HH:MM` 字符串，**bar 收盘时刻（区间结束）**，美东本地。RTH 为 `09:31`..`16:00`（390 个；`core/schema.py` 与 `market/us_equity/calendar.is_rth` 定义 RTH 为 `09:30 < 收盘戳 <= 16:00`）；含盘前盘后为 `04:01`..`20:00`。massive 的 `window_start` 是 bar 起始，需 +60s 得收盘戳。
-- `symbol`：归一化大写 ticker（去 `.US` / `.O` / `:NYSE` 等交易所后缀，见 `core/schema.py` 的 `default_normalize_symbol`），结果为 1–5 字符大写。
+- `symbol`：Polygon/massive 原生大写 ticker。归一（`core/schema.py` 的 `default_normalize_symbol`）只剥交易所后缀（`:NASDAQ`；`.` 后缀仅白名单 `.US`/`.O`/`.N`/`.OQ`）；类别股 / 单位 / 权证的 `.` 后缀（`BRK.A`、`AAC.U`、`ACHR.WS`）是标的原生标识，**保留**（约 1,000 个带点标的与正股是不同证券，剥掉会相互合并、与分钟库失配）。注意 splits/dividends 端点对类别股返回无点 ticker（`BFB`），须经 `remap_to_native_symbols` 按 listing 回映射为带点形式。`corp_actions`：同 `(symbol, ex_date)` 多笔分红求和、多次拆股取乘积；listing 同 symbol 兼有 active 与 delisted 记录（ticker 回收）时以 active 为准。
 - `open/high/low/close`：原始未复权（`float`）。
 - `volume`：成交量；`amount`：成交额 = `vwap×volume`，缺 vwap 时退化为 `close×volume`。
 - 日线由分钟聚合：`open`=首 bar，`high`=max，`low`=min，`close`=末 bar，`volume`/`amount`=求和。
@@ -83,8 +83,8 @@ fetch(symbol, start, end, *, interval="1min", extended_hours=False) -> FetchResu
 - **下载**：`huggingface_hub.snapshot_download(repo_id="TimeSeventeen/Polymarket-v1", repo_type="dataset", allow_patterns="daily_aligned/*")`；按层下载避免一次拉满 49 GB。本地用 DuckDB / Polars / PyArrow 查询 Parquet。
 - **层选择**：`daily_aligned`（已去中继腿、补元数据，推荐起点）+ `ctf`（生命周期 / 初级市场 / 洗量识别）；`orderfilled`（原始 tape，含中继腿，需自行过滤地址）仅在需要最原始数据时取。
 - **关键字段**（`daily_aligned`）：`block_timestamp`（秒级 UTC）、`price`（[0,1] 概率）、`taker_direction`（BUY/SELL，真值方向）、`usdc_amount`、`condition_id`、`p_event`（归一事件概率）、`D`（归一方向 ±1）、`category` / `category_refined`、`opens_at` / `close_at` / `resolved_at`（UTC 时间戳）、`winning_outcome_label`、`market_slug`。
-- **时间归并**：所有时间为 UTC 且 7×24 连续；`block_timestamp` 秒 → 美东，按分钟分桶并归并到美股分钟网格；美股闭市时段的活动向下一开盘聚合。注意夏令时使 UTC 到美东偏移在 2022–2026 间变化（4h / 5h），链上区块时间非均匀，须重采样而非假设每分钟一行。
-- **防前视**：构造特征时只使用严格早于目标 bar 的 `p_event`；剔除中继腿与铸造 / 销毁洗量后再视成交流为有效信号。
+- **时间归并**：所有时间为 UTC 且 7×24 连续；`block_timestamp` 秒 → 美东，按分钟分桶并归并到美股分钟网格；美股闭市时段（夜间 / 周末 / 假日）的活动经 `*_overnight` 特征列聚合到下一交易日（`features.py`）。注意夏令时使 UTC 到美东偏移在 2022–2026 间变化（4h / 5h），链上区块时间非均匀，须重采样而非假设每分钟一行。
+- **防前视**：特征标签 `M` 只含严格早于时刻 `M` 的成交。与 AlphaForge 收盘标签等值连接后，标签 `M` 行 = "截至该 bar 收盘已知的信息"，只能用于预测 `M` 之后的 bar，不可用于解释该 bar 自身收益。剔除中继腿与铸造 / 销毁洗量后再视成交流为有效信号。
 - **作为替代数据**：Polymarket 是宏观 / 事件概率，非逐 symbol 行情。默认作为市场级特征广播（事件概率水平、滚动窗口的概率变化、带方向成交流、解析事件标记），逐 symbol / 板块映射为后续扩展。Alpha-Forge 的情绪模块期望 `{symbol, date, source, headline, url, sentiment_score}`，Polymarket 特征需经适配器接入 `build_panel` 的情绪列。
 
 ## 6. 凭证

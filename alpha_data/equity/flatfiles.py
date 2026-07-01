@@ -12,7 +12,7 @@ ticker，含退市 / OTC，天然无幸存者偏差）。凭证取自环境变�
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -90,7 +90,7 @@ def download_range(
     bucket: str = "flatfiles",
     workers: int = 16,
     overwrite: bool = False,
-    progress: callable | None = None,
+    progress: Callable[[tuple[str, str, int], int, int], None] | None = None,
 ) -> list[tuple[str, str, int]]:
     """并行下载多个交易日文件。返回每个日期的 ``(date, status, size)``。"""
     date_list = list(dates)

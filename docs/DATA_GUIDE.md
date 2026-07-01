@@ -9,12 +9,12 @@
 |---|---|---|---|
 | 美股分钟线 | 全市场 1min OHLCV（原始未复权） | **25.9 亿** bar，21,855 标的，36 GB | 2020-01-02 .. 2026-06-29 |
 | 美股日线 | 由 RTH 分钟聚合 | 1671 万行，21,854 标的，466 MB | 同上 |
-| 公司行动 | 拆股 + 分红 | 142.9 万行，69,392 标的 | 2019-01-02 起 |
-| 上市表 | 标的元数据（含退市，无幸存者偏差） | 32,354 标的（active 12,125） | — |
+| 公司行动 | 拆股 + 分红（同日分红求和、类别股符号已回映射） | 143.3 万行，69,422 标的 | 2019-01-02 起 |
+| 上市表 | 标的元数据（含退市，无幸存者偏差；带点标的独立成行） | 35,895 标的（active 12,900） | — |
 | Polymarket `daily_aligned` | 清洗后逐笔（防前视分析层） | 6.02 亿行，13.2 GB | 2022-11-21 .. 2026-04-28 |
 | Polymarket `ctf` / `orderfilled` | 生命周期 / 原始 tape | 8.39 亿 / 12.0 亿行 | 同上 |
 | Polymarket 市场目录 | 成交额≥$10万的市场 | 29,634 个 | — |
-| Polymarket 特征面板 | 市场级、防前视、美东分钟网格 | 284,741 行（示例，5 个宏观市场） | — |
+| Polymarket 特征面板 | 市场级、防前视、美东分钟网格（含隔夜列） | 284,741 行 × 47 列（示例，5 个宏观市场 × 9 特征） | — |
 
 分钟 bar 总数含盘前盘后（RTH 仅约六成）。
 
@@ -47,6 +47,11 @@ data/
 - **原始未复权**价。复权因子在本地由拆股 / 分红计算（见 §4）。
 - `minute` / `ts` 为 **bar 收盘时刻**（区间结束），美东本地时间。RTH 为 `09:31`..`16:00`（390 bar/日），
   含盘前盘后为 `04:01`..`20:00`。这与 AlphaForge `core/schema.py` 及 `is_rth`（`09:30 < 收盘戳 <= 16:00`）一致。
+- **符号为 Polygon/massive 原生大写 ticker，`.` 后缀保留**：类别股（`BRK.A`/`BRK.B`）、SPAC 单位
+  （`AAC.U`）、权证（`ACHR.WS`）等约 1,000 个带点标的与其正股是不同证券，分钟库、`listing`、
+  `corp_actions` 三处一致存原生符号。归一（`normalize_symbol`）只剥交易所后缀
+  （`AAPL:NASDAQ`、`AAPL.US`/`.O`/`.N`/`.OQ`），不再剥类别股后缀（AlphaForge 侧
+  `default_normalize_symbol` 已同步修正，否则 `BRK.A` 与 `BRK.B` 会被并成同一标的）。
 - Flat Files 分钟聚合**无 vwap**；`trade_count` 取原始 `transactions`。下游 `amount` = `close×volume`。
 - 半日（提前 13:00 收盘）自动处理。缺数据不填充。
 
@@ -165,9 +170,16 @@ print(res.status, res.n_bars, res.bars[0])        # bars[i].ts 为收盘时刻�
 
 - `listing.parquet`：`symbol, name, exchange, status, ipo_date, delist_date`。`exchange` 为 MIC 码
   （`XNAS`=Nasdaq、`XNYS`=NYSE、`ARCX`=NYSE Arca 等）。`ipo_date` 暂空。
+  同一 symbol 兼有 active 与 delisted 记录时（ticker 回收），以当前在市主体（active）为准；
+  一表一行的结构无法同时表达历史占用者，需要历史归属时以退市日期回查原始拉取。
 - `corp_actions.parquet`：`symbol, ex_date, split_ratio, cash_div`。拆股 2:1 记 `split_ratio=2.0`，
-  无拆股记 `1.0`；`cash_div` 为每股现金分红。
-- `reference/{splits,dividends}.parquet`：原始拆股 / 分红副本。
+  无拆股记 `1.0`；`cash_div` 为每股现金分红。同一 `(symbol, ex_date)` 的多笔分红（常规 + 特别
+  股息）已**求和**，多次拆股取**乘积**。
+- **类别股符号回映射**：splits / dividends 端点对类别股返回无点 ticker（`BFB`/`MOGA`），与
+  分钟库的带点原生形式（`BF.B`/`MOG.A`）不一致。构建时已按 listing 全集做保守回映射（仅当
+  无点符号不在册、且唯一对应一个带点在册符号时才映射），保证公司行动能与分钟数据在
+  symbol 上连接。
+- `reference/{splits,dividends}.parquet`：拆股 / 分红副本（逐笔，未合并，已回映射）。
 
 复权因子（后复权比值，从最新往回累乘拆股）示例：
 
@@ -236,9 +248,23 @@ feat = features.build_market_minute_features(con, cid)
 ### 5.5 特征面板字段
 
 `trade_date`、`minute`（美东，与美股同网格），以及每个市场 `{key}_` 前缀的：
-`p`(p_event LOCF)、`dp_intraday`(相对当日开盘)、`dp_overnight`(相对前一交易日收盘)、
-`flow_session`(自开盘累计带方向净额)、`usdc_session`、`n_session`。全部只用严格早于 bar 起始的成交，
-市场解析后置空。作为宏观 / 事件替代数据在 `(trade_date, minute)` 上广播到全体标的。
+
+| 列 | 含义 |
+|---|---|
+| `p` | `p_event` 的 LOCF（截至标签前最后一笔成交） |
+| `dp_intraday` | `p` 相对当日开盘的变化 |
+| `dp_overnight` | 当日开盘 `p` 相对前一交易日收盘的变化（按日广播） |
+| `flow_session` / `usdc_session` / `n_session` | 自当日开盘累计的带方向净额 / 名义额 / 笔数 |
+| `flow_overnight` / `usdc_overnight` / `n_overnight` | 闭市窗口（前收盘至当日 09:30，含夜间与周末）的带方向净额 / 名义额 / 笔数，按日广播；首日 NaN |
+
+Polymarket 是 7×24 市场，闭市时段（往往是事件密集时段，如选举夜）的活动经 `*_overnight`
+列聚合到下一交易日。市场解析（`resolved_at`）后全部特征置空。
+
+**标签语义（防前视，务必理解后再用）**：特征行标签 `minute=M` 只含**严格早于时刻 M** 的成交。
+AlphaForge 面板的 `minute` 是 bar 收盘戳，等值连接后特征行 M 的含义是"截至该 bar 收盘
+（不含收盘瞬间）已知的信息"，与由该 bar 自身 OHLCV 计算的价格特征同一时点口径：
+**可用于预测 M 之后的 bar，不可用于解释或"预测"该 bar 自身的收益**（那是前视）。
+作为宏观 / 事件替代数据在 `(trade_date, minute)` 上广播到全体标的。
 
 ## 6. 环境与凭证
 
@@ -246,6 +272,17 @@ feat = features.build_market_minute_features(con, cid)
 - 凭证：`.env`（不入库，模板 `.env.example`）：`MASSIVE_API_KEY`、`MASSIVE_S3_*`、`HF_TOKEN`。
 - 重建：`scripts/download_equity_flatfiles.py` → `scripts/build_minute_db.py` →
   `scripts/build_reference.py`；Polymarket `scripts/download_polymarket.py` → `build_polymarket_features.py`。
+
+分钟 / 日线构建的续传与重建语义（`build_minute_db.py`）：
+
+- 分钟按年构建，成功后写 `minute/.done_{YEAR}` 标记；默认跳过已标记年份（可反复重跑）。
+- 单年内两阶段可续传：COPY 完成后把**输入指纹**（文件名 + 大小）写入 `.copydone_{YEAR}`，
+  中断后重跑只补未归并的分区、不重读 CSV；若中断后补充下载了新文件，指纹不符会自动改走
+  全新构建，不会把旧暂存误当续传而丢新数据。
+- **扩充某年数据**（例如把 2026 年从上半年补到全年）：先下载新文件，然后
+  `--no-skip-done` 强制重建。全新构建会先清除该年旧分区再整年替换，不会静默保留过期数据。
+- 日线一 symbol 一文件、覆盖**全部已下载交易日**，每次重跑整体替换。脚本的日线阶段固定使用
+  全部已下载文件（与 `--start/--end` 无关），扩充区间后直接 `--daily-only` 重跑即可。
 
 ## 7. 注意事项
 
