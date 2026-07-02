@@ -3,6 +3,10 @@
 本文说明 Alpha-Data 已产出的数据、目录结构、口径，以及如何用 API 访问与使用。所有数据位于
 `data/`（不入库，见 `.gitignore`）。代码示例默认在项目 venv 下运行：`.venv/bin/python`。
 
+接入下游 AlphaForge 做因子研究的操作手册见 `docs/cn_factor_guide.html`（中证）与
+`docs/us_factor_guide.html`（美股），可运行示例在 `examples/alphaforge/`（配置 `cn.toml` /
+`us.toml` + 演示脚本 `factor_demo.py`，不修改 AlphaForge 源码）。
+
 ## 1. 概览与统计
 
 | 数据层 | 内容 | 规模 | 时间范围 |

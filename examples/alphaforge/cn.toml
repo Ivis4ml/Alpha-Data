@@ -1,0 +1,39 @@
+# AlphaForge 运行配置 · 中证 A 股（读 Alpha-Data 的 cn_equity MinuteDB）
+# 用法：alphaforge <cmd> --config examples/alphaforge/cn.toml
+# 或经 examples/alphaforge/factor_demo.py --market cn 调用。
+# 覆盖式合并：只写要改的键，其余沿用 AlphaForge 内置默认。
+# 口径：HH:MM 北京时间，bar 时间戳=区间结束，RTH 09:30-11:30 与 13:00-15:00，T+1 结算。
+
+caliber_version = "v0.1-cn-1min-alpha-data"
+neutralize = true
+
+[run]
+seed = 20260618
+
+[data]
+# 指向 Alpha-Data 产出的中证分钟库（绝对路径，避免被解析到 AlphaForge 的 DATA_HOME）。
+db_dir = "/Users/xinyu/Code/Workspace/ncvx-project/Alpha-Data/data/cn_equity/minute_db"
+synthetic = false
+prefer_db = true
+resolution = "1min"
+
+[market]
+market_id = "cn_ashare"
+benchmark = "000300.SH"
+
+[universe]
+mode = "liquidity"
+min_listed_days = 60
+min_price = 5.0
+top_liquidity_n = 200
+liquidity_lookback_days = 20
+
+[backtest]
+frozen_buy_times = ["09:31", "09:35", "09:40", "10:00", "14:45", "14:55"]
+active_buy_times = ["09:45", "10:00", "10:30", "13:15", "14:45", "15:00"]
+holding = "next_day"
+
+[cost]
+commission_bps = 0.5
+stamp_bps = 1.0
+slippage_bps = 3.0
