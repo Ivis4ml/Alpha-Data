@@ -64,6 +64,9 @@ def test_stock_minute_symbol_and_columns(con: duckdb.DuckDBPyConnection, tmp_pat
     assert int(r.volume) == 7192 and int(r.trade_count) == 0
     assert r.source == minute_store.SOURCE
     assert str(m["ts"].dtype).startswith("datetime64")
+    # 逐分钟成交额忠实保留，vwap=成交额/成交量（真实分钟 VWAP）。
+    assert r.amount == pytest.approx(4768371.0)
+    assert r.vwap == pytest.approx(4768371.0 / 7192, rel=1e-5)
 
 
 def test_index_symbol_preserves_leading_zeros_and_zero_volume(
@@ -93,6 +96,9 @@ def test_index_symbol_preserves_leading_zeros_and_zero_volume(
     m = pd.read_parquet(tmp_path / "db" / "minute" / "000300.SH" / "2024.parquet")
     assert int(m.iloc[0].volume) == 0  # 指数无成交量记 0
     assert m.iloc[0].close == pytest.approx(3425.49)
+    # 指数成交额仍忠实保留；无成交量故 vwap 记 0。
+    assert m.iloc[0].amount == pytest.approx(1.26e9)
+    assert m.iloc[0].vwap == pytest.approx(0.0)
 
 
 def test_daily_aggregation(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:

@@ -11,10 +11,13 @@ CSV 列（GBK 无关，文件为 UTF-8 带 BOM，DuckDB 自动剥离）：
 注意列序为 开盘/收盘/最高/最低，收盘价在最高/最低之前。
 
 产出布局与列（对齐 AlphaForge ``providers/db/minute_db.py``，与美股库
-:mod:`alpha_data.equity.minute_store` 逐列一致，便于同一套 ``DbMinuteSource`` 读取）：
+:mod:`alpha_data.equity.minute_store` 基本一致，便于同一套 ``DbMinuteSource`` 读取；
+分钟表另含 ``vwap`` / ``amount`` 两列，见下）：
 
 - ``minute/{safe_symbol}/{year}.parquet``：``symbol, ts, open/high/low/close(float32),
-  volume/trade_count(int64), source, ingested_utc, raw_hash, _safe``。
+  volume/trade_count(int64), vwap(float32), amount(float64), source, ingested_utc, raw_hash``。
+  比美股库多 ``vwap`` 与 ``amount`` 两列：源逐分钟成交额忠实存入 ``amount``，``vwap``=成交额/成交量
+  （真实分钟 VWAP，成交量为 0 时记 0），使 AlphaForge 面板 ``amount=vwap×volume`` 得真实成交额。
 - ``daily/{safe_symbol}.parquet``：``symbol, trade_date, open/high/low/close(float32),
   volume(int64), amount(float64), source, _safe``（由分钟聚合：open=首 bar，close=末 bar，
   high=max，low=min，volume=Σ成交量，amount=Σ成交额）。
@@ -28,6 +31,8 @@ CSV 列（GBK 无关，文件为 UTF-8 带 BOM，DuckDB 自动剥离）：
   的交易时段（09:30 集合竞价、09:31–11:30 与 13:01–15:00 连续、15:00 收盘集合竞价）
   全部计入日线，不做 RTH 过滤。
 - 指数无成交量，``volume`` 记 0；个股 ``volume`` 取 ``成交量``。
+- ``volume`` 单位为**手（1 手 = 100 股）**，与美股库股数口径不同（源即为手数，原样保留）；
+  故 ``vwap = amount / volume`` = 每股价格 × 100，而 ``amount = vwap × volume`` 精确还原成交额。
 - ``trade_count`` 源无此列，记 0。
 
 符号口径（industry-standard，带交易所后缀，保留前导零）：
@@ -85,6 +90,10 @@ def _read_expr(paths: list[Path], *, kind: str) -> str:
 def _minute_select(paths: list[Path], *, kind: str) -> str:
     symbol = _STOCK_SYMBOL if kind == "stock" else _INDEX_SYMBOL
     volume = "CAST(\"成交量\" AS BIGINT)" if kind == "stock" else "CAST(0 AS BIGINT)"
+    # vwap = 该 bar 成交额 / 成交量（真实分钟 VWAP）；成交量为 0（含指数）时记 0。
+    # 存 vwap 使 AlphaForge 面板 amount=vwap×volume 得真实成交额（而非 close×volume 近似）；
+    # 同时保留原始 amount 列以忠实保存逐分钟成交额（指数无成交量，仅靠 amount 保留）。
+    vwap = f"CASE WHEN {volume} > 0 THEN CAST(\"成交额\" AS DOUBLE) / {volume} ELSE 0 END"
     return f"""
         SELECT {_safe_expr(symbol)}          AS _safe,
                {symbol}                       AS symbol,
@@ -95,6 +104,8 @@ def _minute_select(paths: list[Path], *, kind: str) -> str:
                CAST("收盘价" AS FLOAT)         AS close,
                {volume}                       AS volume,
                CAST(0 AS BIGINT)              AS trade_count,
+               CAST({vwap} AS FLOAT)          AS vwap,
+               CAST("成交额" AS DOUBLE)        AS amount,
                '{SOURCE}'                     AS source,
                ''                             AS ingested_utc,
                ''                             AS raw_hash
