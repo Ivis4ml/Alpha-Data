@@ -15,8 +15,11 @@
 | Polymarket `ctf` / `orderfilled` | 生命周期 / 原始 tape | 8.39 亿 / 12.0 亿行 | 同上 |
 | Polymarket 市场目录 | 成交额≥$10万的市场 | 29,634 个 | — |
 | Polymarket 特征面板 | 市场级、防前视、美东分钟网格（含隔夜列） | 284,741 行 × 47 列（示例，5 个宏观市场 × 9 特征） | — |
+| 中证 A 股分钟线 | 全市场个股 + 指数 1min OHLCV（原始未复权，北京时间） | **17.9 亿** bar，5,710 标的，约 17 GB | 2020-01-02 .. 2025-12-31 |
+| 中证 A 股日线 | 由分钟聚合（真实成交额） | 742.3 万行，5,710 标的 | 同上 |
+| 中证上市表 | 个股 + 指数元数据（含退市，无幸存者偏差） | 5,710 标的（active 5,708；深 3,220 / 沪 2,488 / 北 2） | — |
 
-分钟 bar 总数含盘前盘后（RTH 仅约六成）。
+美股分钟 bar 总数含盘前盘后（RTH 仅约六成）。中证 A 股无复权数据（`corp_actions` 为空，见 §6.4）。
 
 ## 2. 目录结构
 
@@ -30,6 +33,12 @@ data/
       corp_actions.parquet            # 公司行动
       listing.parquet                 # 上市表
     reference/                        # 参考数据独立副本（listing/splits/dividends/corp_actions）
+  cn_equity/
+    minute_db/                        # 中证 A 股 MinuteDB（与美股库同构，见 §6）
+      minute/{SYMBOL}/{YEAR}.parquet  # 分钟 bar，SYMBOL 如 600000.SH / 000300.SH
+      daily/{SYMBOL}.parquet          # 日线
+      listing.parquet                 # 上市表
+      corp_actions.parquet            # 空表（本源无拆股 / 分红）
   polymarket/
     daily_aligned/*.parquet           # 1248 个按日分区文件
     CTF/{preparations,splits,merges,resolutions,redemptions}.parquet
@@ -266,7 +275,74 @@ AlphaForge 面板的 `minute` 是 bar 收盘戳，等值连接后特征行 M 的
 **可用于预测 M 之后的 bar，不可用于解释或"预测"该 bar 自身的收益**（那是前视）。
 作为宏观 / 事件替代数据在 `(trade_date, minute)` 上广播到全体标的。
 
-## 6. 环境与凭证
+## 6. 中证 A 股分钟线（CN）
+
+与美股库**同构**的第三个数据层：源自中证 A 股 1min CSV
+（本机 `remote_db/a_stock_data/extracted`），2020-2025 全市场个股 + 主要指数，产出
+AlphaForge `MinuteDB` 布局，可由同一套 `DbMinuteSource` / DuckDB 读取。
+
+规模：17.9 亿分钟 bar、742.3 万日线行、5,710 标的（5,180 个股 + 530 指数；含退市，
+无幸存者偏差），2020-01-02 .. 2025-12-31 共 1,455 个交易日，约 17 GB。
+
+### 6.1 目录与符号口径
+
+```text
+data/cn_equity/minute_db/
+  minute/{SYMBOL}/{YEAR}.parquet   # 分钟 bar，列与美股库逐列一致
+  daily/{SYMBOL}.parquet           # 日线（一 symbol 一文件）
+  listing.parquet                  # 上市表 [symbol, name, exchange, status, ipo_date, delist_date]
+  corp_actions.parquet             # 空表（本源无拆股 / 分红，见 6.4）
+```
+
+符号为 industry-standard 带交易所后缀（保留前导零）：
+
+- 个股：`sh600000` → `600000.SH`，`sz000001` → `000001.SZ`。
+- 指数：`000300` → `000300.SH`（上交所），`399006` → `399006.SZ`（深交所），
+  `899050` → `899050.BJ`（北交所）。规则：代码前缀 `39` 记 `.SZ`，`899` 记 `.BJ`，其余 `.SH`。
+
+`.SH`/`.SZ`/`.BJ` 不在 AlphaForge 交易所后缀白名单内，归一时保留，`symbol` 与分钟库目录名一致。
+
+### 6.2 访问方式（与美股相同）
+
+```python
+from alphaforge.providers.db.minute_db import MinuteDB
+
+db = MinuteDB("data/cn_equity/minute_db")
+# 分钟：默认 rth_only=True 会保留 09:31..15:00 全部连续 bar，仅丢弃 09:30 集合竞价那一根；
+# 如需含 09:30 开盘集合竞价 bar，传 rth_only=False。
+m = db.read_minute(["600000.SH", "000300.SH"], "2024-01-02", "2024-01-31", rth_only=False)
+d = db.read_daily(["600000.SH"], "2024-01-01", "2024-12-31")
+```
+
+DuckDB 直查与美股库写法相同（把路径换成 `data/cn_equity/minute_db/...`）。
+
+### 6.3 与美股库的口径差异（重要）
+
+- **`ts` 为北京本地墙钟时间**（源时间戳原样保留，非 UTC、非美东）。下游若按美股日历 / RTH
+  解释并不适用：A 股交易时段为 09:30 集合竞价、09:31–11:30 与 13:01–15:00 连续、
+  15:00 收盘集合竞价，全部计入日线，构建时**不做 RTH 过滤**。
+- **`amount` 为真实成交额**（源 `成交额`），非美股库的 `close×volume` 退化估算。
+- **指数无成交量**，`volume` 记 0；`amount` 仍为真实成交额。`trade_count` 源无此列，记 0。
+
+### 6.4 复权缺失（务必知悉）
+
+本源不含拆股 / 分红，故 `corp_actions.parquet` 为空表，**无复权因子**。价格为原始价，
+跨除权 / 除息日的收益不可直接使用（例如贵州茅台 2024-06-19 除息，前后价格有跳空）。
+如需复权，须从免费源（如 akshare、交易所公告）补拆股 / 分红后重建本表。
+
+### 6.5 重建
+
+```bash
+# 全量（2020-2025，个股 + 指数，分钟 + 日线 + listing）
+PYTHONPATH=. .venv/bin/python scripts/build_cn_minute_db.py \
+    --start-year 2020 --end-year 2025 --memory 24GB
+# 只补某几年个股分钟（可断点续传，跳过已完成年份）
+PYTHONPATH=. .venv/bin/python scripts/build_cn_minute_db.py --years 2024 2025 --kind stock --no-daily
+```
+
+续传 / 重建语义与美股库一致（每年 `.done_{kind}_{year}` 标记、输入指纹校验、归并原子替换）。
+
+## 7. 环境与凭证
 
 - venv：`.venv`（`pandas_market_calendars`、`duckdb`、`boto3`、`huggingface_hub` 等）。
 - 凭证：`.env`（不入库，模板 `.env.example`）：`MASSIVE_API_KEY`、`MASSIVE_S3_*`、`HF_TOKEN`。
@@ -284,7 +360,7 @@ AlphaForge 面板的 `minute` 是 bar 收盘戳，等值连接后特征行 M 的
 - 日线一 symbol 一文件、覆盖**全部已下载交易日**，每次重跑整体替换。脚本的日线阶段固定使用
   全部已下载文件（与 `--start/--end` 无关），扩充区间后直接 `--daily-only` 重跑即可。
 
-## 7. 注意事项
+## 8. 注意事项
 
 - 价格原始未复权；复权自算（§4）。
 - 分钟 / 日线时间为 **bar 收盘戳**、美东本地；RTH `09:31`..`16:00`。

@@ -6,10 +6,11 @@
 
 Alpha-Data 为消费方项目 **Alpha-Forge**（本机路径 `/Users/xinyu/Code/ncvx-project/分钟线策略任务-B/AlphaForge`）准备真实数据，替换其当前的合成源。产出必须严格满足 Alpha-Forge 的消费契约（见第 3 节）。本仓库为独立 Git 仓库（remote: `Ivis4ml/Alpha-Data`），与父目录 `ncvx-project` 的工程相互独立。
 
-暂时准备两个相互独立的数据层：
+目前准备三个相互独立的数据层：
 
 1. **美股分钟线**：来自 massive.com，2020-01-01 至 2026-06-30，全市场 1min OHLCV + 公司行动 + 标的池。
 2. **Polymarket 预测市场**：来自 HuggingFace `TimeSeventeen/Polymarket-v1`，2022-11-21 至 2026-04-28，作为宏观 / 事件类替代数据。
+3. **中证 A 股分钟线**：来自本机中证 1min CSV（`remote_db/a_stock_data/extracted`），2020-2025 全市场个股 + 指数，产出与美股库同构的 `MinuteDB`（`data/cn_equity/minute_db`）。符号带交易所后缀（`600000.SH` / `000300.SH` / `399006.SZ` / `899050.BJ`）；`ts` 为北京本地时间；`amount` 为真实成交额；本源无拆股 / 分红，`corp_actions` 为空表、无复权因子（详见 `docs/DATA_GUIDE.md` §6）。构建脚本 `scripts/build_cn_minute_db.py`，模块 `alpha_data/cn_equity/`。
 
 ## 1. 事实来源（优先依据，不要臆造系统逻辑）
 
