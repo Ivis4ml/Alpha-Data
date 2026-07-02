@@ -1,0 +1,37 @@
+# AlphaForge 运行配置 · 美股（读 Alpha-Data 的 equity MinuteDB）
+# 用法：alphaforge <cmd> --config examples/alphaforge/us.toml
+# 或经 examples/alphaforge/factor_demo.py --market us 调用。
+# 口径：HH:MM 美东时间，bar 时间戳=区间结束（收盘戳），RTH 09:31-16:00，T+0 结算。
+
+caliber_version = "v0.1-us-1min-alpha-data"
+neutralize = true
+
+[run]
+seed = 20260618
+
+[data]
+db_dir = "/Users/xinyu/Code/Workspace/ncvx-project/Alpha-Data/data/equity/minute_db"
+synthetic = false
+prefer_db = true
+resolution = "1min"
+
+[market]
+market_id = "us_equity"
+benchmark = "SPY"
+
+[universe]
+mode = "liquidity"
+min_listed_days = 60
+min_price = 5.0
+top_liquidity_n = 200
+liquidity_lookback_days = 20
+
+[backtest]
+frozen_buy_times = ["09:31", "09:35", "09:45", "10:00", "14:45", "15:55"]
+active_buy_times = ["09:35", "10:00", "10:30", "13:00", "14:45", "15:55"]
+holding = "intraday_close"
+
+[cost]
+commission_bps = 0.5
+stamp_bps = 0.0
+slippage_bps = 3.0

@@ -86,3 +86,29 @@ def test_resolution_masks_features():
     assert _bar(out, "2024-06-14", "11:30", "p") == pytest.approx(0.62)
     assert pd.isna(_bar(out, "2024-06-14", "12:30", "p"))
     assert pd.isna(_bar(out, "2024-06-14", "12:30", "flow_session"))
+    assert pd.isna(_bar(out, "2024-06-14", "12:30", "flow_overnight"))
+
+
+def test_overnight_features():
+    rows = [
+        # (et_ts, p_event, D, usdc_amount)
+        ("2024-06-13 10:00:00", 0.50, 1, 40.0),   # 日内成交，不属隔夜
+        ("2024-06-13 16:00:00", 0.52, 1, 30.0),   # 恰在收盘标签：16:00 bar 只含 <16:00，属隔夜
+        ("2024-06-13 22:00:00", 0.55, -1, 20.0),  # 盘后
+        ("2024-06-14 09:15:00", 0.58, 1, 10.0),   # 次日盘前
+        ("2024-06-14 09:30:30", 0.60, 1, 5.0),    # 开盘后：属当日 session，不属隔夜
+    ]
+    df = pd.DataFrame(rows, columns=["et_ts", "p_event", "D", "usdc_amount"])
+    df["et_ts"] = pd.to_datetime(df["et_ts"])
+    out = features_from_trades(df)
+    # 首日无前收盘，隔夜为 NaN。
+    assert pd.isna(_bar(out, "2024-06-13", "10:00", "flow_overnight"))
+    # 次日隔夜窗口 [06-13 16:00, 06-14 09:30) 含三笔：+30、-20、+10。
+    assert _bar(out, "2024-06-14", "09:30", "n_overnight") == pytest.approx(3.0)
+    assert _bar(out, "2024-06-14", "09:30", "usdc_overnight") == pytest.approx(60.0)
+    assert _bar(out, "2024-06-14", "09:30", "flow_overnight") == pytest.approx(20.0)
+    # 按日广播：全天恒定。
+    assert _bar(out, "2024-06-14", "15:59", "n_overnight") == pytest.approx(3.0)
+    # 开盘后的成交计入 session（自 09:31 标签起），不重复计入隔夜。
+    assert _bar(out, "2024-06-14", "09:31", "n_session") == pytest.approx(1.0)
+    assert _bar(out, "2024-06-14", "09:31", "usdc_session") == pytest.approx(5.0)

@@ -1,0 +1,321 @@
+<title>用 AlphaForge 在美股分钟库上做因子研究</title>
+<style>
+  :root{
+    --ground:#F6F7F9; --panel:#FFFFFF; --ink:#131A22; --muted:#5C6773;
+    --line:#E2E6EC; --line-soft:#EDF0F4;
+    --accent:#1F7A55; --accent-deep:#16593C; --teal:#2C5F87; --teal-soft:#E7EEF6;
+    --code-bg:#141F2B; --code-ink:#D7E0EA; --code-mut:#7C8C9C;
+    --code-red:#E88A7D; --code-teal:#6FC7D6; --code-gold:#E0B583; --code-green:#8FCB9B;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:"PingFang SC","Helvetica Neue",-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body,.wrap{margin:0}
+  .wrap{
+    background:var(--ground); color:var(--ink); font-family:var(--sans);
+    font-size:16px; line-height:1.72; -webkit-font-smoothing:antialiased; letter-spacing:.005em;
+  }
+  .col{max-width:788px; margin:0 auto; padding:0 24px}
+  h1,h2,h3{font-weight:750; letter-spacing:-.01em; text-wrap:balance; margin:0}
+  h1{font-size:clamp(30px,5.4vw,44px); line-height:1.12}
+  h2{font-size:clamp(21px,3.4vw,27px); line-height:1.2}
+  h3{font-size:17px; line-height:1.35}
+  p{margin:0}
+  .eyebrow{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--teal)}
+  .lede{font-size:18px; color:#2A3540; line-height:1.68}
+  .muted{color:var(--muted)}
+  a{color:var(--teal); text-decoration:none; border-bottom:1px solid rgba(44,95,135,.32)}
+  a:hover{border-bottom-color:var(--teal)}
+  a:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:2px}
+  code.inl{font-family:var(--mono); font-size:.86em; background:#EEF1F5; padding:.08em .38em; border-radius:4px; color:#243; white-space:nowrap}
+  .hero{padding:76px 0 30px; border-bottom:1px solid var(--line)}
+  .hero .eyebrow{display:block; margin-bottom:18px}
+  .hero h1{margin-bottom:20px}
+  .hero .lede{max-width:60ch}
+  .chips{display:flex; flex-wrap:wrap; gap:10px; margin-top:30px}
+  .chip{display:flex; flex-direction:column; gap:2px; border:1px solid var(--line); background:var(--panel); border-radius:10px; padding:11px 15px; min-width:132px}
+  .chip .k{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted)}
+  .chip .v{font-size:19px; font-weight:750; font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+  .chip .v em{font-style:normal; color:var(--accent)}
+  .flow{padding:34px 0 6px}
+  .flow-grid{display:flex; gap:8px; overflow-x:auto; padding-bottom:8px}
+  .stage{flex:1 0 auto; min-width:112px; border:1px solid var(--line); border-radius:11px; background:var(--panel); padding:14px 14px 15px}
+  .stage .n{font-family:var(--mono); font-size:11px; color:var(--accent); font-weight:700; letter-spacing:.08em}
+  .stage .t{font-weight:700; font-size:14.5px; margin-top:7px}
+  .stage .d{font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5}
+  section{padding:46px 0; border-bottom:1px solid var(--line-soft)}
+  .kicker{display:flex; align-items:baseline; gap:13px; margin-bottom:16px}
+  .kicker .idx{font-family:var(--mono); font-size:13px; font-weight:700; color:var(--accent); letter-spacing:.05em; padding-top:2px}
+  .kicker h2{flex:1}
+  section > .col > p{margin-top:14px; max-width:66ch}
+  .note-inline{color:var(--muted); font-size:15px}
+  figure.code{margin:22px 0 4px; border-radius:12px; overflow:hidden; border:1px solid #0C1620; box-shadow:0 1px 0 rgba(19,26,34,.04), 0 14px 30px -22px rgba(19,26,34,.5)}
+  figure.code .bar{background:#0F1924; display:flex; align-items:center; gap:9px; padding:10px 14px; border-bottom:1px solid #24313F}
+  .dot{width:10px; height:10px; border-radius:50%; background:#33414F}
+  .dot.r{background:#C0564B} .dot.y{background:#C9A25B} .dot.g{background:#5E9E74}
+  figure.code .fname{font-family:var(--mono); font-size:11.5px; color:var(--code-mut); margin-left:6px; letter-spacing:.04em}
+  figure.code .tag{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:#5C6D7E}
+  pre{margin:0; background:var(--code-bg); color:var(--code-ink); font-family:var(--mono); font-size:13px; line-height:1.62; padding:16px 18px; overflow-x:auto; tab-size:2}
+  pre .c{color:var(--code-mut); font-style:italic}
+  pre .k{color:var(--code-teal)}
+  pre .s{color:var(--code-gold)}
+  pre .n{color:var(--code-green)}
+  pre .r{color:var(--code-red)}
+  pre .p{color:#A9B7C6}
+  figcaption{font-size:13px; color:var(--muted); margin-top:9px; padding-left:2px; line-height:1.55}
+  .tablewrap{overflow-x:auto; margin:22px 0 4px; border:1px solid var(--line); border-radius:12px; background:var(--panel)}
+  table{border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums}
+  caption{caption-side:top; text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); padding:13px 16px 0}
+  th,td{padding:10px 16px; text-align:right; font-size:14px; border-bottom:1px solid var(--line-soft); white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{font-family:var(--mono); font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600}
+  tbody td:first-child{font-family:var(--mono); font-size:13px; color:var(--ink)}
+  tbody tr:last-child td{border-bottom:none}
+  tr.combo{background:var(--teal-soft)}
+  tr.combo td:first-child{font-weight:700; color:var(--teal)}
+  .pos{color:var(--accent); font-weight:650}
+  .neg{color:#3E5262}
+  .na{color:#95A2AD; font-family:var(--mono); font-size:13px}
+  .cards{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:24px}
+  .card{border:1px solid var(--line); border-radius:12px; background:var(--panel); padding:18px 18px 17px}
+  .card .lab{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); font-weight:600}
+  .card h3{margin:9px 0 7px}
+  .card p{font-size:14px; color:#33404B; line-height:1.6}
+  .card .fix{margin-top:11px; font-size:13px; color:var(--muted); border-top:1px dashed var(--line); padding-top:10px}
+  .card .fix b{color:var(--teal); font-weight:650}
+  .callout{border-left:3px solid var(--accent); background:#EEF5F0; border-radius:0 10px 10px 0; padding:15px 18px; margin:22px 0 4px; font-size:14.5px; color:#26362E}
+  .callout b{color:var(--accent-deep)}
+  footer{padding:40px 0 64px}
+  footer .col{color:var(--muted); font-size:13px; line-height:1.7}
+  footer .paths{font-family:var(--mono); font-size:12px; color:#48545F; margin-top:10px; word-break:break-all}
+  footer .rule{height:1px; background:var(--line); margin-bottom:26px}
+  .kbd{font-family:var(--mono); background:#EEF1F5; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 6px; font-size:12px}
+  @media (max-width:600px){ .cards{grid-template-columns:1fr} .hero{padding-top:52px} }
+  @media (prefers-reduced-motion:no-preference){
+    .reveal{opacity:0; transform:translateY(10px); animation:rise .6s cubic-bezier(.2,.7,.2,1) forwards}
+    @keyframes rise{to{opacity:1; transform:none}}
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="col reveal">
+      <span class="eyebrow">Alpha-Data × AlphaForge · 操作手册</span>
+      <h1>从美股分钟库到因子 IC</h1>
+      <p class="lede">Alpha-Data 已产出全市场美股分钟库（massive.com / Polygon Flat Files）。美股是
+        AlphaForge 的原生市场,接入比中证更省事:符号原生、复权已具备。本手册给出真实可跑的五步流程与
+        必须知道的口径边界,与中证手册互为姊妹篇。</p>
+      <div class="chips">
+        <div class="chip"><span class="k">分钟 bar</span><span class="v"><em>25.9</em> 亿</span></div>
+        <div class="chip"><span class="k">标的</span><span class="v">21,855</span></div>
+        <div class="chip"><span class="k">区间</span><span class="v">2020–2026</span></div>
+        <div class="chip"><span class="k">市场适配</span><span class="v">us_equity</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="flow col">
+    <div class="flow-grid" role="list" aria-label="研究流程">
+      <div class="stage" role="listitem"><div class="n">01</div><div class="t">数据源</div><div class="d">DbMinuteSource 包装分钟库</div></div>
+      <div class="stage" role="listitem"><div class="n">02</div><div class="t">面板</div><div class="d">build_panel 拼 PIT 面板</div></div>
+      <div class="stage" role="listitem"><div class="n">03</div><div class="t">因子</div><div class="d">内建因子库逐列求值</div></div>
+      <div class="stage" role="listitem"><div class="n">04</div><div class="t">IC</div><div class="d">多 horizon RankIC 打分</div></div>
+      <div class="stage" role="listitem"><div class="n">05</div><div class="t">组合</div><div class="d">方向归一等权合成</div></div>
+      <div class="stage" role="listitem"><div class="n">06</div><div class="t">报告</div><div class="d">CLI 全链路 pipeline</div></div>
+    </div>
+  </div>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">背景</span><h2>原生市场,接入更直接</h2></div>
+      <p>AlphaForge 就是面向美股与期权的因子研究平台,<code class="inl">us_equity</code> 是它的原生适配器:
+        NYSE 日历、LULD 与全市场熔断、拆股分红复权、ADV 流动性选池、T+0 当日收盘退出。口径与我们入库
+        时一致:HH:MM 为美东时间、bar 时间戳为收盘戳、常规交易时段 09:31–16:00、基准 SPY。</p>
+      <p>与中证手册相比,美股少两个接缝:符号是原生 ticker,归一白名单会保留类别股的点后缀
+        （<code class="inl">BRK.A</code>）,不需要覆盖;复权表已具备,跨日与 T+0 的 IC 标签可直接用。
+        下面五步与中证手册同构,便于对照。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">01</span><h2>写一个美股配置</h2></div>
+      <p>与中证同理,只在默认配置基础上覆盖数据与市场两节。</p>
+      <figure class="code">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="fname">examples/alphaforge/us.toml</span><span class="tag">TOML</span></div>
+<pre><span class="p">[data]</span>
+db_dir    = <span class="s">"…/Alpha-Data/data/equity/minute_db"</span>
+synthetic = <span class="r">false</span>
+prefer_db = <span class="r">true</span>
+resolution = <span class="s">"1min"</span>
+
+<span class="p">[market]</span>
+market_id = <span class="s">"us_equity"</span>     <span class="c"># NYSE 日历、LULD/熔断、T+0</span>
+benchmark = <span class="s">"SPY"</span>
+
+<span class="p">[backtest]</span>
+holding = <span class="s">"intraday_close"</span>  <span class="c"># 美股 T+0：当日收盘退出</span></pre>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">02</span><h2>接线数据源,避开全库扫描</h2></div>
+      <p>规模陷阱在美股更突出:<code class="inl">build_panel</code> 枚举交易日时,
+        <code class="inl">DbMinuteSource.trading_days</code> 不带范围会扫描全部
+        <b>21,855</b> 个标的的分钟数据。务必把交易日枚举限定到基准标的(SPY),只读一个日线文件。</p>
+      <figure class="code">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="fname">接线：基准限定的数据源</span><span class="tag">Python</span></div>
+<pre><span class="k">from</span> alphaforge.providers.db.minute_db <span class="k">import</span> MinuteDB
+<span class="k">from</span> alphaforge.providers.db.source <span class="k">import</span> DbMinuteSource
+
+<span class="k">class</span> <span class="n">BenchmarkScopedSource</span>(DbMinuteSource):
+    <span class="k">def</span> <span class="n">trading_days</span>(self, start, end):
+        <span class="k">return</span> self.db.trading_days(start, end, symbols=[self.benchmark])
+
+src = BenchmarkScopedSource(MinuteDB(cfg.data.db_dir), <span class="s">"SPY"</span>, rth_only=<span class="r">True</span>)</pre>
+        <figcaption>美股符号原生,<code class="inl">AAPL</code> 直接匹配库内目录,归一无需覆盖(对比中证的后缀接缝)。</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">03</span><h2>构建面板并计算因子</h2></div>
+      <p>与中证同一套代码:<code class="inl">build_panel</code> 产出含 <code class="inl">close_adj</code>、
+        <code class="inl">amount</code>、<code class="inl">session_bucket</code> 等派生列的 PIT 面板,内建因子库
+        逐列求值。美股复权表已具备,<code class="inl">close_adj</code> 会按拆股分红正确调整。</p>
+      <figure class="code">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="fname">面板 + 因子求值</span><span class="tag">Python</span></div>
+<pre><span class="k">from</span> alphaforge.core.factors.library <span class="k">import</span> build_default_registry
+
+panel, meta = build_panel(cfg, <span class="s">"2024-01-02"</span>, <span class="s">"2024-03-29"</span>,
+                          symbols=SYMBOLS, use_cache=<span class="r">False</span>, source=src)
+
+reg = build_default_registry()
+<span class="k">for</span> fid <span class="k">in</span> FACTOR_IDS:
+    _, func = reg.get(fid)
+    panel[fid] = func(panel)</pre>
+      </figure>
+      <div class="callout"><b>与中证对照:</b>美股 Flat Files 没有逐分钟 VWAP,
+        面板 <code class="inl">vwap</code> 由 <code class="inl">amount/volume</code> 退化为约等于
+        <code class="inl">close</code>,故 <code class="inl">vwap_close_dev</code> 这类以 VWAP 偏离为核心的因子
+        失效(下表为 <code class="inl">NaN</code>)。中证库存了真实成交额,该因子可用——这是两库的一处口径差异。</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">04</span><h2>评估单因子 IC</h2></div>
+      <p>用 <code class="inl">multi_horizon_ic</code> 计算日内多 horizon 横截面 RankIC(买点 10:00)。
+        下表是在 20 只大盘股、2024-01-02 至 2024-03-29 共 61 个交易日、474,312 行面板上的<b>真实</b>结果。</p>
+      <div class="tablewrap">
+        <table>
+          <caption>日内多 horizon RankIC · 买点 10:00</caption>
+          <thead><tr><th>因子</th><th>+1bar</th><th>+4bar</th><th>当日收盘</th></tr></thead>
+          <tbody>
+            <tr><td>amount_surge_20b</td><td class="pos">0.0013</td><td class="neg">−0.0044</td><td class="neg">−0.0254</td></tr>
+            <tr><td>vwap_close_dev_10b</td><td class="na">NaN</td><td class="na">NaN</td><td class="na">NaN</td></tr>
+            <tr><td>rev_20b</td><td class="neg">−0.0344</td><td class="neg">−0.0373</td><td class="neg">−0.0212</td></tr>
+            <tr><td>volatility_20b</td><td class="neg">−0.0882</td><td class="neg">−0.0784</td><td class="pos">0.0086</td></tr>
+            <tr><td>mom_20b</td><td class="pos">0.0344</td><td class="pos">0.0373</td><td class="pos">0.0212</td></tr>
+            <tr class="combo"><td>等权组合（方向归一）</td><td class="pos">0.0470</td><td class="pos">0.0376</td><td class="pos">0.0069</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note-inline">读法:小样本流程演示,非交易结论。<code class="inl">vwap_close_dev</code> 因缺真实
+        VWAP 而为 NaN(见上文对照);其余四因子机制合理,方向归一等权组合 RankIC(+1bar 0.047)高于单因子。
+        严肃研究应扩大标的与区间并做显著性检验。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">05</span><h2>合成组合 · 真实终端输出</h2></div>
+      <p>方向归一等权 z 合成的实际打印(与中证同一脚本,仅 <code class="inl">--market us</code>):</p>
+      <figure class="code">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="fname">$ python examples/alphaforge/factor_demo.py --market us</span><span class="tag">stdout</span></div>
+<pre>市场=us_equity 基准=SPY 库=…/Alpha-Data/data/equity/minute_db
+面板：<span class="n">474,312</span> 行 × <span class="n">32</span> 列,标的 <span class="n">20</span>,交易日 <span class="n">61</span>
+
+日内多 horizon RankIC（买点 10:00）：
+            factor    +1bar    +4bar      EOD
+  amount_surge_20b  <span class="n">0.00129</span> <span class="r">-0.00439</span> <span class="r">-0.02535</span>
+vwap_close_dev_10b      <span class="c">NaN</span>      <span class="c">NaN</span>      <span class="c">NaN</span>
+           rev_20b <span class="r">-0.03437</span> <span class="r">-0.03727</span> <span class="r">-0.02118</span>
+    volatility_20b <span class="r">-0.08818</span> <span class="r">-0.07842</span>  <span class="n">0.00855</span>
+           mom_20b  <span class="n">0.03437</span>  <span class="n">0.03727</span>  <span class="n">0.02118</span>
+   combo(dir-norm)  <span class="n">0.04695</span>  <span class="n">0.03763</span>  <span class="n">0.00687</span>
+
+<span class="n">OK</span>：端到端跑通。</pre>
+      </figure>
+      <figure class="code">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="fname">CLI 一键（第 06 步）</span><span class="tag">Shell</span></div>
+<pre><span class="c"># 单区间面板体检</span>
+alphaforge build-panel --config examples/alphaforge/us.toml \
+  --start 2024-01-02 --end 2024-03-29 --symbols AAPL,MSFT,NVDA
+
+<span class="c"># 全链路：因子 → IC → 治理 → 显著性 → 组合 → 归因 → 报告</span>
+alphaforge pipeline --config examples/alphaforge/us.toml \
+  --start 2024-01-02 --end 2024-06-28</pre>
+        <figcaption>不传 <code class="inl">--symbols</code> 时按 ADV 流动性自动选池;仍须注意基准限定的交易日枚举。</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <div class="kicker"><span class="idx">注意</span><h2>四个口径边界</h2></div>
+      <div class="cards">
+        <div class="card">
+          <div class="lab">复权 · 已具备</div>
+          <h3>拆股分红完整</h3>
+          <p>美股 <code class="inl">corp_actions</code> 已产出(约 143 万行,同日分红求和、类别股符号已回映射),
+            <code class="inl">close_adj</code> 按拆股分红正确调整,跨日与 T+0 的 IC 标签可直接用。</p>
+          <p class="fix"><b>对照:</b>这是相对中证库的优势——中证暂无复权。</p>
+        </div>
+        <div class="card">
+          <div class="lab">VWAP · 退化</div>
+          <h3>无逐分钟 VWAP</h3>
+          <p>Flat Files 不含逐分钟 VWAP,面板 <code class="inl">vwap</code> 退化为约等于
+            <code class="inl">close</code>,<code class="inl">vwap_close_dev</code> 等因子失效(表中 NaN)。</p>
+          <p class="fix"><b>补法:</b>如需真实分钟 VWAP,走 REST 聚合的 vwap 字段补录,或改用其他量价因子。</p>
+        </div>
+        <div class="card">
+          <div class="lab">符号 · 原生</div>
+          <h3>ticker 直接匹配</h3>
+          <p>美股符号是原生 ticker,归一白名单只剥交易所后缀,保留类别股点后缀
+            （<code class="inl">BRK.A</code>）,与库内目录一致。</p>
+          <p class="fix"><b>无需处理:</b>不像中证要覆盖 normalize_symbol。</p>
+        </div>
+        <div class="card">
+          <div class="lab">规模 · 扫描</div>
+          <h3>2.2 万标的更要限定</h3>
+          <p>标的达 21,855,<code class="inl">trading_days</code> 全库枚举比中证更慢。</p>
+          <p class="fix"><b>修法:</b>把交易日枚举限定到 SPY(第 02 步的
+            <code class="inl">BenchmarkScopedSource</code>)。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="col">
+      <div class="rule"></div>
+      <p>路径与版本 · 分钟库 <code class="inl">market_id=us_equity</code>,基准 <code class="inl">SPY</code>,
+        口径版本 <code class="inl">v0.1-us-1min-alpha-data</code>。01–05 步已封装在
+        <code class="inl">examples/alphaforge/factor_demo.py</code>（不改 AlphaForge 源码),用
+        <span class="kbd">ALPHAFORGE_ROOT=…/AlphaForge .venv/bin/python …</span> 运行。</p>
+      <p class="paths">Alpha-Data/data/equity/minute_db · Alpha-Data/examples/alphaforge/us.toml · Alpha-Data/examples/alphaforge/factor_demo.py · alphaforge.providers.data.panel.build_panel</p>
+      <p class="muted" style="margin-top:16px">本页所有命令与数字均在真库上实测。IC 为 20 只样本、61 个交易日的流程演示,非交易结论。</p>
+    </div>
+  </footer>
+
+</div>

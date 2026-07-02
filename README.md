@@ -130,10 +130,16 @@ Alpha-Data/
 
 - 环境：`.venv` + 依赖（含 duckdb / polars / pandas_market_calendars / boto3 / huggingface_hub）。
 - Polymarket 原始数据：全量三层已下载并校验（`daily_aligned` + `ctf` + `orderfilled`，约 46 GB，26.4 亿行）。
-- 美股参考数据（`alpha_data/equity/reference.py`）：标的全集（含退市）、拆股、分红 → AlphaForge `listing` / `corp_actions` 表，已实测通过（不受订阅档位限制）。
-- 美股 1min Flat Files 管线：`flatfiles.py`（S3 下载）+ `transform.py`（口径转换）+ `minute_store.py`（构建 `MinuteDB` 分区库）。已经 AlphaForge 自身 `MinuteDB` 读回验证（AAPL 单日 390 个 RTH bar、开盘 bar 保留、OHLCV 与 REST `adjusted=false` 逐字段一致）。全量 2020–2026 下载与构建进行中。
+- 美股参考数据（`alpha_data/equity/reference.py`）：标的全集（含退市）、拆股、分红 → AlphaForge `listing` / `corp_actions` 表，已入库。
+- 美股 1min Flat Files 管线：`flatfiles.py`（S3 下载）+ `transform.py`（口径转换）+ `minute_store.py`（构建 `MinuteDB` 分区库）。全量 2020-01 至 2026-06 已构建完成，并经 AlphaForge 自身 `MinuteDB` 读回验证（单日 390 个 RTH bar、OHLCV 与 REST `adjusted=false` 逐字段一致）。
+- `MassiveProvider`（REST 增量 / 补缺，实现 `MinuteProvider` 协议）：已实现并与 Flat Files 构建交叉验证。
 - **Polymarket 特征管线（`alpha_data/polymarket/`）**：见下。
-- 待办：`MassiveProvider`（REST 增量 / 补缺，实现 `MinuteProvider` 协议）；参考数据（listing/corp_actions）入库；全量 build 完成后切换 AlphaForge 至真实源。
+- 2026-07-01 修订：符号约定改为保留类别股 / 单位 / 权证的 `.` 后缀（与 AlphaForge
+  `default_normalize_symbol` 协同修正），并对 splits / dividends 端点的无点类别股 ticker
+  做回映射（`BFB` → `BF.B`），`listing` / `corp_actions` 已按新口径重拉；
+  `corp_actions` 同日多笔分红改为求和；分钟 / 日线构建的强制重建路径修正为整年替换 +
+  输入指纹校验（此前会静默保留旧分区）；Polymarket 特征新增 `*_overnight` 隔夜列。
+- 待办：切换 AlphaForge 至真实源并端到端跑 `build_panel`。
 
 ## 10. Polymarket 特征管线
 
@@ -141,7 +147,7 @@ Alpha-Data/
 
 - `common/calendar.py`：NYSE 交易日 + RTH 分钟网格（`pandas_market_calendars`，自动处理节假日 / 半日）。
 - `polymarket/catalog.py`：按 `condition_id` 汇总市场目录（DuckDB，约 4s 完成 6 亿行聚合），按 slug 关键词检索。
-- `polymarket/features.py`：单市场分钟特征 `p`（`p_event` LOCF）、`dp_intraday`、`dp_overnight`、`flow_session`、`usdc_session`、`n_session`。防前视：bar 起始 T 只用严格早于 T 的成交；解析后置空。
+- `polymarket/features.py`：单市场分钟特征 `p`（`p_event` LOCF）、`dp_intraday`、`dp_overnight`、`flow_session`、`usdc_session`、`n_session`，以及闭市窗口（夜间 / 周末 / 假日）聚合的 `flow_overnight`、`usdc_overnight`、`n_overnight`（按日广播）。防前视：标签 T 只用严格早于时刻 T 的成交（对 AlphaForge 收盘标签即"截至该 bar 收盘已知"，只能预测 T 之后的 bar）；解析后置空。
 - `scripts/build_polymarket_features.py`：建目录 → 按宏观主题（fed_rate / recession / inflation / election / shutdown）选市场 → 建特征宽表 → 写 `data/polymarket/features/`。
 - 测试：`tests/test_polymarket_features.py`（合成数据，验证防前视与累计不变量）。
 
