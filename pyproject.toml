@@ -15,6 +15,10 @@ dependencies = [
     "requests>=2.31",
     "python-dotenv>=1.0",
     "tqdm>=4.66",
+    # Polymarket 链上爬虫：事件 topic0（keccak256）与 ABI 解码
+    "eth-utils>=4.0",
+    "eth-abi>=5.0",
+    "eth-hash[pycryptodome]>=0.7",
 ]
 
 [project.optional-dependencies]

@@ -41,6 +41,27 @@ massive.com 是 Polygon.io 于 2025-10-30 完成的品牌更名（"Polygon.io is
 
 许可为 CC-BY-4.0，公开可下载（匿名亦可，提供只读 token 仅为提升吞吐与稳定性）。引用 arXiv:2606.04217。
 
+### 2.3 Polymarket 自采集（一手爬取，见 [`docs/POLYMARKET_CRAWL.md`](docs/POLYMARKET_CRAWL.md)）
+
+该数据集本质上是 Polygon 主网公开事件日志的解码结果（主键即 `chainId_blockNumber_logIndex`），
+不含任何私有成分。本仓库实现了可完整复现它的链上爬虫（`alpha_data/polymarket/chain/`），
+并已逐字段验证：随机抽取横跨 2022 至 2026 的 6 个区块重抓，与快照 **163 行 × 13 列全等**
+（`python scripts/verify_polymarket_reproduction.py`）。
+
+两点使用该快照时必须知道的事实：
+
+- **它整体丢弃了 negRisk 市场**（`neg_risk` 全库恒为 `f`），其中包括 2024 年美国大选那批
+  旗舰市场。月度留存率因此在 12% 至 88% 间剧烈波动。
+- **它停在 2026-04-28，是因为 Polymarket 当天迁移了交易所合约**（旧合约最后一条 `OrderFilled`
+  在区块 86,126,998，与快照末区块完全相同）。新协议的事件 ABI 与抵押品代币均已改变，
+  续爬必须解码新版事件。本仓库的爬虫同时支持新旧两套协议：
+
+```bash
+python scripts/crawl_polymarket_chain.py trades            # 从快照末区块续爬至最新
+python scripts/crawl_polymarket_chain.py metadata --verify 20
+python scripts/crawl_polymarket_chain.py analysis
+```
+
 ## 3. 输出契约（Alpha-Forge 消费口径）
 
 Alpha-Data 的产物必须满足 Alpha-Forge 的两个接口。详细字段见 `CLAUDE.md`。
