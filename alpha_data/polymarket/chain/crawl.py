@@ -80,7 +80,12 @@ def crawl_trades_window(pool: RpcPool, lo: int, hi: int) -> pd.DataFrame:
         return pd.DataFrame(columns=list(decode.TRADE_COLUMNS))
     ts_by_block = _resolve_timestamps(pool, logs)
     rows = [r for r in (decode.decode_trade(x, ts_by_block) for x in logs) if r is not None]
-    return pd.DataFrame(rows, columns=list(decode.TRADE_COLUMNS))
+    # 2026 年的密度下，单个 10,000 块窗口有逾百万条日志；解码后立即释放原始对象，
+    # 避免原始日志与解码结果在内存中同时存在（并发窗口数乘以此开销即为峰值内存）。
+    logs.clear()
+    df = pd.DataFrame(rows, columns=list(decode.TRADE_COLUMNS))
+    rows.clear()
+    return df
 
 
 def crawl_ctf_window(pool: RpcPool, spec: venues.EventSpec, lo: int, hi: int) -> pd.DataFrame:
