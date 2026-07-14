@@ -129,7 +129,7 @@ v1.1（FDR 改用 HAC p 值 + 时点化准入 + 登记表修正）后，68 项�
 
 数据表 `data/cn_futures/analysis/deep/`，图 `docs/figures/deep/`，脚本
 `scripts/deep_analysis_cn_polymarket.py`。方法学参考
-《Polymarket 套利圣经》（docs/ 内 PDF）：logit / KL 几何是 LMSR 与负熵框架下
+Roan《The Math Needed for Trading on Polymarket (Complete Roadmap)》（@RohOnChain，https://x.com/RohOnChain/status/2017314080395296995；docs/ 内为其中文编译版 PDF）：logit / KL 几何是 LMSR 与负熵框架下
 概率的自然坐标（其对极端概率变化的高权重正当化了本研究的 Δlogit 信号）；
 日期阶梯市场族之间存在蕴含约束 P(早截止) ≤ P(晚截止)，见 §8.3 聚类块结构。
 
