@@ -212,9 +212,15 @@ daily["close_adj"] = daily["close"] * daily["adj_factor"]
 
 ## 5. Polymarket
 
+> **自采集与续爬见 [`POLYMARKET_CRAWL.md`](POLYMARKET_CRAWL.md)。** 该数据全部来自 Polygon
+> 链上公开日志，本仓库有可完整复现它的爬虫（已逐字段验证）。两点必须知道：
+> (1) 公开快照**整体丢弃了 negRisk 市场**，含 2024 美国大选那批旗舰市场；
+> (2) 它停在 2026-04-28 是因为 Polymarket 当天迁移了交易所合约，续爬须解码新版 ABI。
+
 ### 5.1 层与用途
 
 - `daily_aligned`（**推荐分析层**）：已去中继腿、补元数据、归一。逐笔成交 + 真值方向。
+  注意其市场范围只含非 negRisk 的二元市场（`neg_risk` 恒为 `f`，`outcome_seq` 只取 1/2）。
 - `ctf`：Conditional Tokens 生命周期（铸造 / 销毁 / 解析 / 赎回），做初级市场 / 洗量识别。
 - `orderfilled`：原始链上 tape，含中继腿，需自行过滤。
 
@@ -382,3 +388,53 @@ PYTHONPATH=. .venv/bin/python scripts/build_cn_minute_db.py --years 2024 2025 --
 - **规模注意**：MinuteDB 读取全部标的分钟数据的调用（`trading_days()` 不传 symbols、
   `DbMinuteSource.trading_days()` / `universe_candidates()`）在 2.2 万标的下很慢；交易日 / 选池请用
   DuckDB 日线（§3.4）或对 `trading_days` 传基准标的（如 `SPY`）。定标的的 `read_minute` 等都很快。
+
+## 9. 中国期货主力连续分钟线（CN Futures）
+
+第四个数据层：源自本机 `data/future_shares/`（聚宽风格主力连续 `XX9999.交易所` 分钟
+CSV，GBK 编码），88 品种覆盖上期所 / 大商所 / 郑商所 / 能源中心 / 广期所 / 中金所，
+2026-01-05 .. 2026-07-13 共 125 个交易日、350 万分钟 bar。构建脚本
+`scripts/build_cn_futures_db.py`，模块 `alpha_data/cn_futures/`。
+
+### 9.1 源数据陷阱（务必知悉）
+
+- **夜盘 bar 存于其开始时刻的次一自然日文件**：周二文件含周一晚 21:00 起的夜盘，
+  周六文件仅含周五晚夜盘（归属下周一交易日），**周一文件从不含夜盘**。抽查周一文件
+  会误判为"仅日盘数据"。跨文件无重复行。
+- `volume` / `money` 为逐分钟增量（非日内累计）；`open_interest` 为水平值；
+  时间戳为北京时间 **bar 收盘戳**（`21:01` 表示 21:00..21:01）。
+- 主力切换发生在夜盘开盘（21:01 bar），即交易日边界，同一交易日内合约唯一；
+  `symbol` 列给出当日实际主力合约。
+
+### 9.2 库布局与口径
+
+```text
+data/cn_futures/
+  minute/{PRODUCT}/{YEAR}.parquet   # ts、trade_date、session(night/day)、OHLC、volume、
+                                    # money、open_interest、contract
+  daily/{PRODUCT}.parquet           # 分时段日线（night_* / day_* 两组 OHLCV）+ 收益列
+  dominant_table.parquet            # 主力合约起止区间（provider_9999_continuous）
+  product_specs.parquet             # 交易所、实测夜盘收盘 night_end、覆盖区间
+  qc_summary.parquet                # 逐品种质量核查
+```
+
+- **交易日归属**：夜盘归属下一交易日（周一交易日含上周五夜盘），由 `ts` 推导，
+  与文件布局无关；分钟表直接带 `trade_date` / `session` 列。
+- **夜盘时段实测**：56 品种有夜盘，收盘 23:00（43 个）/ 01:00（上期所有色 10 个）/
+  02:30（AU、AG、SC）三档，存于 `product_specs.night_end`，非硬编码。
+- **收益列**（日线，对数）：`r_night`（夜盘内）、`r_gap_pm`（前日收 → 夜盘开）、
+  `r_gap_am`（夜盘收 → 日盘开）、`r_gap_full`（前日收 → 日盘开）、`r_day`（日盘内）、
+  `r_cc`（前日收 → 当日收）。**换月日跨合约的收益（`r_gap_pm` / `r_gap_full` / `r_cc`）
+  置 NaN**（换月跳空非可实现收益），原始值保留于 `*_raw` 列，`roll` 列标记换月日。
+
+### 9.3 与 Polymarket 的联合分析
+
+- 市场映射（事前注册）：`docs/mapping_taxonomy.md`；选取脚本
+  `scripts/select_polymarket_markets.py` → `data/polymarket/features/cn_registry.parquet`。
+- 国内时段三分量信号：`alpha_data/polymarket/cn_features.py`（logit innovation 按
+  night / gap / day 拆分，15min 量加权中位数聚合去 bounce，`p_age` 时效，结算截断，
+  防前视语义严格早于标签）；窗口边界 `alpha_data/cn_futures/sessions.py`（窗口可调）。
+- 分析：`scripts/analyze_cn_futures_polymarket.py`（同期吸收 + 预测性 + 夜盘
+  lead-lag，Newey-West、BH-FDR），产物 `data/cn_futures/analysis/`、图 `docs/figures/`。
+- 时区结构：北京 = UTC+8 无夏令时；美国白天（Polymarket 最活跃）与国内夜盘重叠，
+  夜盘是信号最可能被即时定价的窗口；无夜盘品种只能经次日开盘跳空反应。
