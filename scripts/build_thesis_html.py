@@ -155,6 +155,37 @@ def chain_table_html() -> str:
             + "</table></div>")
 
 
+def surrogate_tables_html() -> tuple[str, str]:
+    """N1 充分性表与 N4 LP-IV 表。"""
+    s1 = pd.read_parquet(DEEP / "surrogate_sufficiency.parquet").dropna(subset=["c_t"])
+    head = ("<tr><th>主题 × 品种</th><th>n</th><th>c（无控制）</th>"
+            "<th>单一最优代理后</th><th>全谱 12 资产后 c′</th>"
+            "<th>恒等式闭合</th><th>全谱 R²</th></tr>")
+    rows = []
+    for r in s1.itertuples(index=False):
+        live = abs(r.c_prime_full_t) >= 2
+        cls = ' class="live"' if live else ' class="die"'
+        rows.append(
+            f"<tr{cls}><td>{r.theme} × {r.cn}</td><td>{r.n}</td>"
+            f"<td>{r.c_t:+.2f}</td><td>{r.cp_best1:+.2f}（{r.best1_sym}）</td>"
+            f"<td><b>{r.c_prime_full_t:+.2f}</b></td>"
+            f"<td>{abs(r.identity_gap):.1e}</td><td>{r.r2_full:.2f}</td></tr>")
+    t1 = '<div class="tablewrap"><table>' + head + "".join(rows) + "</table></div>"
+
+    s4 = pd.read_parquet(DEEP / "surrogate_iv.parquet")
+    head = ("<tr><th>链</th><th>n</th><th>第一阶段 F</th><th>δ_IV</th>"
+            "<th>β_OLS</th><th>弱工具</th></tr>")
+    rows = []
+    for r in s4.itertuples(index=False):
+        rows.append(
+            f"<tr><td>{r.theme}·{r.mediator}→{r.cn}</td><td>{r.n}</td>"
+            f"<td>{r.first_stage_F:.1f}</td><td>{r.delta_iv:+.2f}</td>"
+            f"<td>{r.beta_ols:+.2f}</td>"
+            f"<td>{'是' if r.weak_iv else '<b>否</b>'}</td></tr>")
+    t2 = '<div class="tablewrap"><table>' + head + "".join(rows) + "</table></div>"
+    return t1, t2
+
+
 STYLE = """
 :root {
   --paper: #FAF9F5; --ink: #22262C; --ink-soft: #5C6470; --line: #E4E1D8;
@@ -257,6 +288,7 @@ def build() -> str:
     intl_html = intl_table_html()
     bt_html, lev_html, vt_html = backtest_tables_html()
     chain_html = chain_table_html()
+    suff_html, iv_html = surrogate_tables_html()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -279,6 +311,15 @@ def build() -> str:
             r"r^{\mathrm{SC}}_t - b^{\mathrm{USO}}_t"),
         tex(r"\mathrm{RV}^{\mathrm{day}}_t \;=\; \alpha \;+\; \gamma\, |s^{\mathrm{gap}}_t| "
             r"\;+\; \rho\, \mathrm{RV}^{\mathrm{day}}_{t-1} \;+\; \varepsilon_t"),
+        tex(r"s_t = \lambda f_t + \eta_t, \quad B_t = \Lambda f_t + u_t, "
+            r"\quad y_t = \theta f_t + \varphi' u_t + e_t"),
+        tex(r"H_S:\;\; y \perp s \mid B "
+            r"\quad\Rightarrow\quad c'_{\mathrm{full}} = 0"),
+        tex(r"c \;=\; c' \;+\; \gamma' \delta, \qquad "
+            r"\delta_j = \frac{\mathrm{cov}(B_j, s)}{\mathrm{var}(s)}"),
+        tex(r"\hat\delta_{\mathrm{IV}} \;=\; "
+            r"\frac{\mathrm{cov}(y, s)}{\mathrm{cov}(B_k, s)}, "
+            r"\qquad F_{1st} = t_a^2"),
     ]
 
     return f"""<title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
@@ -700,6 +741,46 @@ mideast×SC 直接分量幸存（t=3.68）。</p>
          "(b) c 显著的链的中介占比。约半数效应经美股中介，mideast 主题在"
          "商品与股指两侧都保留直接分量。")}
 
+
+<h3>12.8 美股作为代理：充分性框架（潜因子模型与四组实验）</h3>
+<p><b>数学设定</b>。设不可观测的全球事件信息因子 f_t；Polymarket 信号 s、
+美股向量 B（12 个 ETF：SPY/QQQ/IWM/SOXX/TLT/HYG/UUP/USO/XLE/GLD/FXI/ASHR，
+角度覆盖大盘/成长/小盘/半导体/久期/信用/美元/原油/能源股/黄金/中国大盘/A股），
+国内资产 y 都是 f 的噪声观测：</p>
+{{_TEX[11]}}
+<p><b>代理充分性判据</b>（Prentice 1989 替代终点判据的跨市场版）：
+"美股张成空间是 PM 信息的充分统计量"等价于</p>
+{{_TEX[12]}}
+<p>检验量是全谱回归 y ~ s + B 中 s 的系数 c′。它与单变量总效应 c 之间满足
+遗漏变量恒等式（线性代数上精确成立，表中"恒等式闭合"列为数值验证，
+应为机器零）：</p>
+{{_TEX[13]}}
+{suff_html}
+<p><b>读法</b>：<b>mideast×IF 在含 FXI/ASHR 的全谱下 c′ t=+4.64</b>——中东事件
+概率对沪深300期货开盘跳空的直接分量，不在包括美国交易的中国 ETF 在内的任何
+美股角度里；mideast×SC 同样幸存（+3.23）。<b>诚实标注</b>：oil×SC 的全谱 c′
+（+2.47）高于单一 USO 后（+1.88）属共线抑制效应且 n=37 对 13 个回归元自由度
+紧张，不作结论；us_china_trade×IM 全谱后死亡（+1.97 边界）。</p>
+{fig_tag("deep/n1_sufficiency_path.png",
+         "最小充分代理集路径：前向贪心逐个加入美股资产（标注该步入选资产），"
+         "纵轴为 PM 信号残余直接效应 |t(c′)|。mideast×IF（蓝）加入 QQQ/GLD/FXI 后"
+         "稳定在 5.7 上方；us_china_trade×IM（青）在 k=2 后跌破 2。")}
+<p><b>影子组合</b>（每个主题在美股横截面上的载荷画像，回答"哪个角度"）：</p>
+{fig_tag("deep/n2_shadow_portfolio.png",
+         "主题 → 各美股资产同窗收益的单变量 HAC t。oil_price 行是教科书式的"
+         "供给冲击画像：USO +6.9、XLE +1.6 而 SPY/QQQ/IWM/SOXX 为 −3.8 至 −7.4"
+         "（半导体最受伤）、HYG −3.6——油价上涨被定价为滞胀式风险规避；"
+         "mideast(IF 网格，方向为降级=+1) 行是其镜像：降级 = 风险资产普涨。")}
+<p><b>LP-IV（外部工具变量）</b>：把 s 当作潜在事件冲击的工具，识别
+"PM 驱动的美股变动"对国内的结构传导：</p>
+{{_TEX[14]}}
+{iv_html}
+<p><b>读法</b>：唯一的强工具链是 oil·USO→SC（第一阶段 F=42）：
+<b>δ_IV=+1.13 &gt; β_OLS=+0.89</b>——SC 对"由事件概率驱动的那部分 USO 变动"
+的传导比对一般 USO 变动强约 27%（事件驱动的油价变动被国内认为更持久）。
+其余链第一阶段 F 在 3.5-5.7（弱工具，与 12.7 的"链条瓶颈在第一段"一致），
+δ_IV 仅作点估计参考；二阶段使用生成回归元，SE 偏乐观，不据此下结论。</p>
+
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>
 <div class="finding"><span class="no">一</span>信息传导真实且时段结构清晰：
@@ -731,6 +812,11 @@ Sharpe 2.0，但全部策略的 95% CI 含 0——样本长度不足以确立任
 SPY 冲击弱）；显著的链约半数效应经美股中介，mideast 主题在商品（SC）与股指
 （IF/IM）两侧都保留控制美股后的直接分量——事件概率的独立信息一致地指向
 "美股未完全捕捉的地缘供给/风险敞口"。</div>
+<div class="finding"><span class="no">九</span>代理充分性框架（12.8）把上述结论
+推到最强形式：mideast 的直接分量在<b>含 FXI/ASHR 的 12 资产全谱</b>下于 SC
+（t=3.23）与 IF（t=4.64）两侧同时幸存——美股整个张成空间都不是该信息的充分
+代理；LP-IV 显示国内对"事件驱动的 USO 变动"传导强于一般变动
+（δ_IV=1.13 vs β_OLS=0.89，强工具 F=42）。</div>
 <h3>13.2 局限</h3>
 <ul>
 <li>约 75 个重叠交易日、单一美伊冲突主导；滚动相关显示吸收强度在事件热度

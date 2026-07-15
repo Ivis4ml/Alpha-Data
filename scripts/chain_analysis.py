@@ -91,6 +91,8 @@ def theme_gap_signals_nonight(registry: pd.DataFrame,
             # 直接用 σ = orientation / m_registered。登记表存了 sigma 列。
             s["w"] = np.sqrt(rec.usdc_win) * rec.sigma * m_eq
             frames.append(s)
+        if not frames:
+            continue
         allm = pd.concat(frames, ignore_index=True)
 
         def wavg(g: pd.DataFrame) -> float:
