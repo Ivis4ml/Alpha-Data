@@ -99,6 +99,43 @@ def intl_table_html() -> str:
             + "</table></div>")
 
 
+def backtest_tables_html() -> tuple[str, str, str]:
+    """回测指标 / 固定杠杆 / 目标波动三张表。"""
+    m = pd.read_parquet(DEEP / "backtest_metrics.parquet")
+    m = m[m.cost_bp > 0].sort_values("sharpe", ascending=False)
+    head = ("<tr><th>策略</th><th>年化收益%</th><th>年化波动%</th>"
+            "<th>Sharpe</th><th>95% CI</th><th>最大回撤%</th>"
+            "<th>胜率</th><th>持仓日</th></tr>")
+    rows = []
+    for r in m.itertuples(index=False):
+        ci0 = f"[{r.sharpe_lo:+.1f}, {r.sharpe_hi:+.1f}]"
+        rows.append(
+            f"<tr><td>{r.strategy}</td><td>{r.ann_ret_pct:+.1f}</td>"
+            f"<td>{r.ann_vol_pct:.1f}</td><td><b>{r.sharpe:+.2f}</b></td>"
+            f"<td>{ci0}</td><td>{r.max_dd_pct:.1f}</td>"
+            f"<td>{r.hit_rate:.0%}</td><td>{r.n_active}</td></tr>")
+    t1 = '<div class="tablewrap"><table>' + head + "".join(rows) + "</table></div>"
+
+    lev = pd.read_parquet(DEEP / "backtest_leverage.parquet")
+    head = ("<tr><th>杠杆</th><th>年化收益%</th><th>年化波动%</th>"
+            "<th>Sharpe</th><th>最大回撤%</th></tr>")
+    rows = [(f"<tr><td>{int(r.leverage)}x</td><td>{r.ann_ret_pct:+.0f}</td>"
+             f"<td>{r.ann_vol_pct:.0f}</td><td>{r.sharpe:+.2f}</td>"
+             f"<td>{r.max_dd_pct:.0f}</td></tr>")
+            for r in lev.itertuples(index=False)]
+    t2 = '<div class="tablewrap"><table>' + head + "".join(rows) + "</table></div>"
+
+    vt = pd.read_parquet(DEEP / "backtest_voltarget.parquet")
+    head = ("<tr><th>杠杆方式</th><th>年化收益%</th><th>年化波动%</th>"
+            "<th>Sharpe</th><th>最大回撤%</th></tr>")
+    rows = [(f"<tr><td>{r.variant}</td><td>{r.ann_ret_pct:+.1f}</td>"
+             f"<td>{r.ann_vol_pct:.1f}</td><td>{r.sharpe:+.2f}</td>"
+             f"<td><b>{r.max_dd_pct:.1f}</b></td></tr>")
+            for r in vt.itertuples(index=False)]
+    t3 = '<div class="tablewrap"><table>' + head + "".join(rows) + "</table></div>"
+    return t1, t2, t3
+
+
 STYLE = """
 :root {
   --paper: #FAF9F5; --ink: #22262C; --ink-soft: #5C6470; --line: #E4E1D8;
@@ -199,6 +236,7 @@ ul, ol { padding-left: 1.4rem; } li { margin: .45rem 0; }
 def build() -> str:
     ablation_html = ablation_table_html()
     intl_html = intl_table_html()
+    bt_html, lev_html, vt_html = backtest_tables_html()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -587,6 +625,38 @@ Polymarket 不领先国际市场，国内市场在开市时段也无显著滞后
          "|s_gap|（oil_price）与 SC 日盘已实现波动率：正相关，"
          "回归控制昨日 RV 后仍显著（t=4.4）。")}
 
+
+<h3>12.6 可交易性：策略回测、Sharpe 与杠杆</h3>
+<p>把幸存的信号构造成四个<b>信号窗口严格早于持仓窗口</b>的策略：
+S1 隔夜信号（09:00 前已知）→ 持有日盘；S2 傍晚闭市信号（21:00 前已知）→
+持有夜盘；S3 反转：−sign(全日信号) 于收盘进场、持有 3 日（重叠三档）；
+S5 事件：E3 新市场创建桶收盘进场、持有 120 分钟。成本按单边 4bp（SC 一跳
+约 1.5bp + 手续费，taker 偏保守）随换手扣除。净成本指标：</p>
+{bt_html}
+<p><b>读法（先看 CI 再看点估计）</b>：最高的 S3_rev_oil 净 Sharpe 2.0，但
+95% 置信区间 [−1.6, +5.6]——<b>75 个交易日不足以在统计上确立任何年化
+Sharpe</b>，全部策略的 CI 都含 0。方向上与前文一致：S1（隔夜信号博日盘）
+为负——开盘后没有剩余方向信息（§7.1），oil 版本甚至显著为负（反转当日
+即开始）；有点估计价值的是 S3（升水回归）与 S2（傍晚信号博夜盘，胜率
+67%）。另须声明：策略形态是<b>看过 IRF 之后设计的</b>（研究内选择），
+不构成样本外证据；S3 本质是在做单一事件期的 SC 升水均值回归。</p>
+<h4>固定杠杆：Sharpe 不变，变的是回撤与保证金</h4>
+{lev_html}
+<p>收益与波动同乘、成本随仓位同比例，<b>净 Sharpe 对固定杠杆不变</b>（表中
+恒为 2.0）；变化的是最大回撤——5x 下回撤 106%，早已穿仓。SC 保证金约
+10-15%，名义杠杆上限约 7x，但回撤路径先于保证金约束杀死策略。</p>
+<h4>目标波动动态杠杆：不造 Sharpe，但重塑风险路径</h4>
+<p>真正有意义的杠杆用法来自 §12.5 的发现（|信号| 预测波动）：仓位
+L<sub>t</sub> = min(3, σ<sub>target</sub>/σ̂<sub>t</sub>)，σ̂<sub>t</sub> 由
+HAR-lite 模型（|s_gap| 与昨日 RV）给出（系数全样本估计，存在样本内偏差）：</p>
+{vt_html}
+<p>Sharpe 几乎不变（2.00 → 1.99），<b>最大回撤 21.2% → 13.7%</b>（降 35%）：
+高事件风险日自动减仓避开了最深回撤。这与理论一致——sizing 不能制造
+不存在的边际收益，但能改善收益路径的形状。</p>
+{fig_tag("deep/l1_backtest.png",
+         "(a) 四个代表性策略的净值曲线（含 4bp 单边成本）；(b) 固定杠杆扫描："
+         "Sharpe（黑线，右轴）对杠杆不变，收益（绿）与回撤（红）同比放大。")}
+
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>
 <div class="finding"><span class="no">一</span>信息传导真实且时段结构清晰：
@@ -609,6 +679,10 @@ Polymarket 在国内闭市期间积累的信息在开盘跳空与夜盘中被系
 <div class="finding"><span class="no">六</span>方向之外风险可测：|s_gap| 在控制
 昨日 RV 后仍预测 SC 日盘已实现波动率（t=4.4，R²=0.64）——事件概率的"动静大小"
 是干净的波动率信号，与方向预测力的缺失并行不悖。</div>
+<div class="finding"><span class="no">七</span>可交易性：最优策略（升水回归）净
+Sharpe 2.0，但全部策略的 95% CI 含 0——样本长度不足以确立任何 Sharpe；
+固定杠杆不改变 Sharpe 只放大回撤（5x 时 106%），基于波动率预测的动态杠杆
+在 Sharpe 不变下把回撤从 21% 压到 14%。</div>
 <h3>13.2 局限</h3>
 <ul>
 <li>约 75 个重叠交易日、单一美伊冲突主导；滚动相关显示吸收强度在事件热度
