@@ -136,6 +136,25 @@ def backtest_tables_html() -> tuple[str, str, str]:
     return t1, t2, t3
 
 
+def chain_table_html() -> str:
+    """中介链 c / a / b / c' 与中介占比。"""
+    tab = pd.read_parquet(DEEP / "chain_mediation.parquet").dropna(subset=["c_t"])
+    head = ("<tr><th>链（主题 · 美股 → 国内）</th><th>n</th>"
+            "<th>c：PM→CN</th><th>a：PM→美股</th><th>b：美股→CN</th>"
+            "<th>c′：控美股后</th><th>中介占比</th></tr>")
+    rows = []
+    for r in tab.itertuples(index=False):
+        share = f"{r.mediation_share:.0%}" if pd.notna(r.mediation_share) else "—"
+        strong = abs(r.c_prime_t) >= 2
+        cls = ' class="live"' if strong else ""
+        rows.append(
+            f"<tr{cls}><td>{r.theme} · {r.us} → {r.cn}</td><td>{r.n}</td>"
+            f"<td>{r.c_t:+.2f}</td><td>{r.a_t:+.2f}</td><td>{r.b_t:+.2f}</td>"
+            f"<td><b>{r.c_prime_t:+.2f}</b></td><td>{share}</td></tr>")
+    return ('<div class="tablewrap"><table>' + head + "".join(rows)
+            + "</table></div>")
+
+
 STYLE = """
 :root {
   --paper: #FAF9F5; --ink: #22262C; --ink-soft: #5C6470; --line: #E4E1D8;
@@ -237,6 +256,7 @@ def build() -> str:
     ablation_html = ablation_table_html()
     intl_html = intl_table_html()
     bt_html, lev_html, vt_html = backtest_tables_html()
+    chain_html = chain_table_html()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -657,6 +677,29 @@ HAR-lite 模型（|s_gap| 与昨日 RV）给出（系数全样本估计，存在
          "(a) 四个代表性策略的净值曲线（含 4bp 单边成本）；(b) 固定杠杆扫描："
          "Sharpe（黑线，右轴）对杠杆不变，收益（绿）与回撤（红）同比放大。")}
 
+
+<h3>12.7 中介链：Polymarket → 美股 → 国内（表中数字为 HAC t）</h3>
+<p>直接通道微弱的自然追问是：引入美股作中间环节会不会更好？用经典中介分解
+回答——总效应 c（PM→CN）、路径 a（PM→美股，窗口内）、路径 b（美股→CN，
+控 PM 后）、直接效应 c′（PM→CN，控美股后），中介占比 = 1 − c′/c。
+国内股票以中金所股指期货 IF（沪深300）、IM（中证1000）代理（A 股现货分钟库
+止于 2025 年末，与信号窗口无重叠）；美股中介用 SPY。股指侧各主题的方向 m 为
+本节新增的判断性设定（仅 taiwan×IF 为 v1.1 注册），结果标注探索性。</p>
+{chain_html}
+<p><b>三个读法</b>：（1）<b>b 通道压倒性强</b>——SPY 闭市收益对 IF/IM 开盘跳空
+的 t≈9-11：美股确实是国内股指隔夜定价的主导解释器，"引入美股"在这一段
+收益巨大。（2）但完整链 PM→SPY→CN 在本窗口并不强，瓶颈在第一段：本期主题
+对 SPY 的冲击有限（a 的 t 全部 &lt; 2，中东冲突对美股只是温和的风险规避）。
+（3）与商品侧同构的例外再次出现：<b>mideast 对 IF/IM 在控制 SPY 后直接效应
+反而更清晰（c′ t=+3.45 / +2.15，中介占比约 52-58%）</b>——中东风险在国内开盘
+被定价的部分，约一半经由美股、另一半是美股未捕捉的直接分量。商品对照行同表：
+oil×SC 控后死亡（52% 中介 + 剩余不显著）、fed×AU 中介 63%、
+mideast×SC 直接分量幸存（t=3.68）。</p>
+{fig_tag("deep/m1_chain.png",
+         "(a) 各链总效应 c（蓝）与控制美股后的直接效应 c′（橙）；"
+         "(b) c 显著的链的中介占比。约半数效应经美股中介，mideast 主题在"
+         "商品与股指两侧都保留直接分量。")}
+
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>
 <div class="finding"><span class="no">一</span>信息传导真实且时段结构清晰：
@@ -683,6 +726,11 @@ Polymarket 在国内闭市期间积累的信息在开盘跳空与夜盘中被系
 Sharpe 2.0，但全部策略的 95% CI 含 0——样本长度不足以确立任何 Sharpe；
 固定杠杆不改变 Sharpe 只放大回撤（5x 时 106%），基于波动率预测的动态杠杆
 在 Sharpe 不变下把回撤从 21% 压到 14%。</div>
+<div class="finding"><span class="no">八</span>中介链：美股→国内股指的 b 通道
+压倒性强（SPY→IF/IM t≈9-11），但 PM→美股→CN 完整链受制于第一段（本期主题对
+SPY 冲击弱）；显著的链约半数效应经美股中介，mideast 主题在商品（SC）与股指
+（IF/IM）两侧都保留控制美股后的直接分量——事件概率的独立信息一致地指向
+"美股未完全捕捉的地缘供给/风险敞口"。</div>
 <h3>13.2 局限</h3>
 <ul>
 <li>约 75 个重叠交易日、单一美伊冲突主导；滚动相关显示吸收强度在事件热度
