@@ -193,13 +193,35 @@ code { background: var(--chip); border-radius: 4px; padding: .08rem .4rem;
 ul, ol { padding-left: 1.4rem; } li { margin: .45rem 0; }
 .refs { font-size: .88rem; } .refs li { margin: .6rem 0; }
 .footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid
-  var(--line); font-size: .85rem; color: var(--ink-soft); }
-"""
+  var(--line); font-size: .85rem; color: var(--ink-soft); }"""
 
 
 def build() -> str:
     ablation_html = ablation_table_html()
     intl_html = intl_table_html()
+
+    # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
+    # 项目最低 3.11）。
+    _TEX = [
+        tex(r"\bar p_b \;=\; \frac{1}{2}\left[\,\mathrm{wmed}(p \mid D{=}{+}1) \;+\; "
+            r"\mathrm{wmed}(p \mid D{=}{-}1)\,\right]"),
+        tex(r"\ell(p) \;=\; \ln\frac{p}{1-p}, \qquad p \in [0.02,\; 0.98]"),
+        tex(r"s_w \;=\; \ell(\bar p(t_1^-)) \;-\; \ell(\bar p(t_0^-)), \qquad w=[t_0,\; t_1)"),
+        tex(r"r_w(t) \;=\; \alpha \;+\; \beta_{\mathrm{abs}}\, s_w(t) \;+\; \varepsilon_t"),
+        tex(r"r_{t\to t+h} \;=\; \alpha_h \;+\; \beta_h\, s_t \;+\; \varepsilon_{t,h}, \qquad "
+            r"h = 0,1,\dots,8"),
+        tex(r"\beta_0 > 0 \;\;\wedge\;\; \beta_h < 0 \quad (h \geq 1)"),
+        tex(r"\mathrm{E1}:\;\; |\Delta\ell_b| > 3 \times 1.4826 \cdot "
+            r"\mathrm{MAD}_{48}(\Delta\ell) \;\;\wedge\;\; \mathrm{usdc}_b \geq \mathrm{10k}"),
+        tex(r"\mathrm{E2}:\;\; \mathrm{usdc}_b \;>\; 10 \times "
+            r"\mathrm{med}_{48}(\mathrm{usdc}) \;\;\wedge\;\; n_b \geq 20"),
+        tex(r"r_w(t) \;=\; \alpha \;+\; \beta_s\, s_w(t) \;+\; \beta_b\, b_w(t) \;+\; "
+            r"\varepsilon_t"),
+        tex(r"r^{\mathrm{SC}}_t \;=\; b^{\mathrm{USO}}_t \;+\; q_t, \qquad q_t \;\equiv\; "
+            r"r^{\mathrm{SC}}_t - b^{\mathrm{USO}}_t"),
+        tex(r"\mathrm{RV}^{\mathrm{day}}_t \;=\; \alpha \;+\; \gamma\, |s^{\mathrm{gap}}_t| "
+            r"\;+\; \rho\, \mathrm{RV}^{\mathrm{day}}_{t-1} \;+\; \varepsilon_t"),
+    ]
 
     return f"""<title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
 <style>{STYLE}</style>
@@ -306,7 +328,7 @@ YES 价格 p ∈ (0,1) 即市场隐含概率。本文数据（daily_aligned 层�
 把逐笔按 15 分钟分桶（桶为左闭右开 [b−15′, b)，<b>标签取右端</b>——标签 T 的桶
 只含严格早于 T 的成交，这是全文防前视的基石）。桶内按 taker 方向分成两堆，
 各取成交额加权中位数，再取两向平均：
-{tex(r"\bar p_b \;=\; \frac{{1}}{{2}}\left[\,\mathrm{{wmed}}(p \mid D{{=}}{{+}}1) \;+\; \mathrm{{wmed}}(p \mid D{{=}}{{-}}1)\,\right]")}
+{_TEX[0]}
 <div class="texnote">wmed = 成交额加权中位数；只有单向成交时取该向。</div>
 <div class="why"><b>为什么</b>：主动买单贴卖一价（偏高）、主动卖单贴买一价（偏低），
 逐笔价在买卖间来回跳并不代表概率变化（bid-ask bounce）。两向分别聚合再平均
@@ -316,7 +338,7 @@ YES 价格 p ∈ (0,1) 即市场隐含概率。本文数据（daily_aligned 层�
 而非"涨到 0.62 又跌回 0.60"。</div>
 
 <div class="step"><span class="tag">第 2 步 · logit 变换</span>
-{tex(r"\ell(p) \;=\; \ln\frac{{p}}{{1-p}}, \qquad p \in [0.02,\; 0.98]")}
+{_TEX[1]}
 <div class="texnote">p 超出区间先截断，再取 logit。</div>
 <div class="why"><b>为什么不用概率差</b>：0.05→0.15 意味着事件相对可能性翻了三倍，
 0.50→0.60 只是温和修正，但两者概率差同为 0.10。Roan 原文第二章用 Bregman/KL
@@ -327,7 +349,7 @@ logit 在 0/1 发散（对应原文 §3.4 的边界梯度爆炸）：临近结�
 
 <div class="step"><span class="tag">第 3 步 · 窗口切分与端点差</span><br>
 每个时段窗口 w = [t₀, t₁) 的信号是两端 logit 之差：
-{tex(r"s_w \;=\; \ell(\bar p(t_1^-)) \;-\; \ell(\bar p(t_0^-)), \qquad w=[t_0,\; t_1)")}
+{_TEX[2]}
 端点价取该时刻前最后一个桶（LOCF）。防前视三细节：桶标签严格早于语义（第 1 步）；
 恰在 t₁ 时刻的成交归下一窗口；端点距最后一笔成交超过 120 分钟（p_age）视为
 过时，该窗口记缺失——LOCF 不允许无限延伸。市场结算之后的窗口记缺失
@@ -365,8 +387,9 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
 <h3>6.1 设计</h3>
 <p>"吸收"回答：信号动的窗口内，期货是否同方向动。对每个（主题×品种），
 把逐日窗口信号与<b>恰好同窗口</b>的期货收益配对回归：</p>
-{tex(r"r_w(t) \;=\; \alpha \;+\; \beta_{{\mathrm{{abs}}}}\, s_w(t) \;+\; \varepsilon_t")}
-<div class="texnote">Newey-West 标准误；换月日剔除。吸收 ≝ β<sub>abs</sub> &gt; 0 且显著——同期关系，不构成预测。</div>
+{_TEX[3]}
+<div class="texnote">Newey-West 标准误；换月日剔除。吸收 ≝ β<sub>abs</sub> &gt; 0 且显著
+——同期关系，不构成预测。</div>
 <p>四段窗口各配各的收益：傍晚段配"前收盘→夜盘开"跳空、夜盘段配夜盘内收益、
 凌晨段配"夜盘收→日盘开"跳空、日盘段配日盘内收益。</p>
 <h3>6.2 结果：吸收集中在美国活跃时段对应的闭市段</h3>
@@ -396,10 +419,11 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
          "窗口敏感性：截止 09:00 往回累积 K 小时的信号对当日日盘收益的相关，"
          "K 从 3h 到 120h。全程弱且无形态。")}
 <h3>7.2 局部投影与"吸收后反转"的精确判据</h3>
-{tex(r"r_{{t\to t+h}} \;=\; \alpha_h \;+\; \beta_h\, s_t \;+\; \varepsilon_{{t,h}}, \qquad h = 0,1,\dots,8")}
-{tex(r"\beta_0 > 0 \;\;\wedge\;\; \beta_h < 0 \quad (h \geq 1)")}
+{_TEX[4]}
+{_TEX[5]}
 <div class="texnote">同时满足上式即判定为"吸收后反转"。</div>
-<div class="texnote">r<sub>t→t+h</sub> 为第 t+1 至 t+h 交易日累计对数收益（h=0 取当日）；每个 h 单独回归，HAC 滞后 ≥ h。</div>
+<div class="texnote">r<sub>t→t+h</sub> 为第 t+1 至 t+h 交易日累计对数收益（h=0 取当日）；
+每个 h 单独回归，HAC 滞后 ≥ h。</div>
 <p>对每个视界单独回归（局部投影）的好处：不必假设统一的 AR 动力学，
 β_h 路径直接可读——"信号高一个标准差的那天之后，价格平均往哪儿走"。</p>
 {fig_tag("deep/h_irf.png",
@@ -451,8 +475,8 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
 
 <h2 id="s10">10　事件研究</h2>
 <p>三类事件的精确定义（15 分钟桶 b 上，限 SC 相关主题）：</p>
-{tex(r"\mathrm{{E1}}:\;\; |\Delta\ell_b| > 3 \times 1.4826 \cdot \mathrm{{MAD}}_{{48}}(\Delta\ell) \;\;\wedge\;\; \mathrm{{usdc}}_b \geq \mathrm{{10k}}")}
-{tex(r"\mathrm{{E2}}:\;\; \mathrm{{usdc}}_b \;>\; 10 \times \mathrm{{med}}_{{48}}(\mathrm{{usdc}}) \;\;\wedge\;\; n_b \geq 20")}
+{_TEX[6]}
+{_TEX[7]}
 <div class="texnote"><b>E3</b>：登记市场的第一笔成交（无公式，事件时刻 = first_ts）。</div>
 <div class="texnote">MAD₄₈ = 过去 48 桶中位数绝对偏差；1.4826·MAD 是稳健 σ 估计。</div>
 <p>对落在 SC 夜盘内的事件，取事件后 0-120 分钟 SC 累计收益，按
@@ -466,8 +490,9 @@ orientation×sign(Δℓ) 符号化后平均；置信带 = 500 次事件重抽自
 <h2 id="s11">11　国际基准控制（本文的核心检验）</h2>
 <h3>11.1 设计</h3>
 <p>把与信号窗口<b>完全同界</b>的基准收益加入吸收回归：</p>
-{tex(r"r_w(t) \;=\; \alpha \;+\; \beta_s\, s_w(t) \;+\; \beta_b\, b_w(t) \;+\; \varepsilon_t")}
-<div class="texnote">b<sub>w</sub> = 同窗口国际基准（USO/GLD/SLV）对数收益，端点 LOCF 与信号同口径。问题：β<sub>s</sub> 控制 b<sub>w</sub> 后是否存活。</div>
+{_TEX[8]}
+<div class="texnote">b<sub>w</sub> = 同窗口国际基准（USO/GLD/SLV）对数收益，端点 LOCF 与信号同口径。
+问题：β<sub>s</sub> 控制 b<sub>w</sub> 后是否存活。</div>
 <h3>11.2 结果</h3>
 {intl_html}
 <p>表格读法（蓝色 t = 控制后死亡，橙色 = 幸存）：</p>
@@ -488,7 +513,7 @@ USO 自身 t=5.64 同在）。控制了国际油价当期变动后，中东冲�
          "mideast×SC·gap 是唯一控制后反而增强的。")}
 <h3>11.3 反转机制判别：升水回归，不是全球过度反应</h3>
 <p>把 SC 收对收拆成两个可加分量，对每个分量分别做局部投影：</p>
-{tex(r"r^{{\mathrm{{SC}}}}_t \;=\; b^{{\mathrm{{USO}}}}_t \;+\; q_t, \qquad q_t \;\equiv\; r^{{\mathrm{{SC}}}}_t - b^{{\mathrm{{USO}}}}_t")}
+{_TEX[9]}
 <div class="texnote">b = 国际（USO）分量，q = 价差 / 升水分量。</div>
 {fig_tag("deep/i2_irf_decomposition.png",
          "oil_price 信号下三个分量的 β_h。当日吸收 +507 中 USO 分量占 +424（84%），"
@@ -554,7 +579,7 @@ Polymarket 不领先国际市场，国内市场在开市时段也无显著滞后
 <h3>12.5 波动率预测：方向不可测，风险可测</h3>
 <p>HAR-lite 回归：SC 日盘已实现波动率（5 分钟收益平方和的平方根）对隔夜信号
 强度 |s_gap| 与昨日 RV：</p>
-{tex(r"\mathrm{{RV}}^{{\mathrm{{day}}}}_t \;=\; \alpha \;+\; \gamma\, |s^{{\mathrm{{gap}}}}_t| \;+\; \rho\, \mathrm{{RV}}^{{\mathrm{{day}}}}_{{t-1}} \;+\; \varepsilon_t")}
+{_TEX[10]}
 <p>oil：γ 的 t=4.4（R²=0.64）；mideast：t=3.1（R²=0.42）。隔夜事件概率的
 波动幅度在控制波动率惯性后仍预测当日风险——即便方向没有剩余可预测性
 （§7.1），<b>风险维度是可预测的</b>，对保证金、期权与仓位管理有直接含义。</p>
@@ -631,10 +656,14 @@ Rate. <i>JRSS-B</i>, 57(1).</li>
 <h2 id="appA">附录 A　窗口边界（以 SC 为例，夜盘收盘 02:30）</h2>
 <div class="tablewrap"><table>
 <tr><th>窗口</th><th>北京时间（交易日 t）</th><th>对应美东</th><th>信号列</th><th>匹配收益</th></tr>
-<tr><td>傍晚闭市 gap_pm</td><td>t−1 日 15:00 → 21:00</td><td>约 02:00-08:00</td><td>s_gap_pm</td><td>r_gap_pm = ln(夜盘开/前日收)</td></tr>
-<tr><td>夜盘 night</td><td>t−1 日 21:00 → t 日 02:30</td><td>约 08:00-13:30</td><td>s_night</td><td>r_night = ln(夜盘收/夜盘开)</td></tr>
-<tr><td>凌晨闭市 gap_am</td><td>t 日 02:30 → 09:00</td><td>约 13:30-20:00</td><td>s_gap_am</td><td>r_gap_am = ln(日盘开/夜盘收)</td></tr>
-<tr><td>日盘 day</td><td>t 日 09:00 → 15:00</td><td>约 20:00-02:00</td><td>s_day</td><td>r_day = ln(日盘收/日盘开)</td></tr>
+<tr><td>傍晚闭市 gap_pm</td><td>t−1 日 15:00 → 21:00</td><td>约 02:00-08:00</td>
+<td>s_gap_pm</td><td>r_gap_pm = ln(夜盘开/前日收)</td></tr>
+<tr><td>夜盘 night</td><td>t−1 日 21:00 → t 日 02:30</td><td>约 08:00-13:30</td>
+<td>s_night</td><td>r_night = ln(夜盘收/夜盘开)</td></tr>
+<tr><td>凌晨闭市 gap_am</td><td>t 日 02:30 → 09:00</td><td>约 13:30-20:00</td>
+<td>s_gap_am</td><td>r_gap_am = ln(日盘开/夜盘收)</td></tr>
+<tr><td>日盘 day</td><td>t 日 09:00 → 15:00</td><td>约 20:00-02:00</td>
+<td>s_day</td><td>r_day = ln(日盘收/日盘开)</td></tr>
 </table></div>
 <p>周一交易日的 t−1 是上周五：夜盘发生在周五晚，gap 覆盖整个周末。换月日
 （主力合约切换）的跨合约收益（r_gap_pm、收对收）置缺失。无夜盘品种：

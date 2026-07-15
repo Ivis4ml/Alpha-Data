@@ -45,7 +45,7 @@ from intl_benchmark_analysis import (  # noqa: E402
 )
 
 from alpha_data.cn_futures import sessions  # noqa: E402
-from alpha_data.cn_futures import store as fut_store
+from alpha_data.cn_futures import store as fut_store  # noqa: E402
 from alpha_data.polymarket import store as poly_store  # noqa: E402
 
 P = pub_style.PALETTE
