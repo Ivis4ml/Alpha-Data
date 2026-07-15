@@ -20,9 +20,22 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from pub_style import tex_svg  # noqa: E402
 
 FIG = ROOT / "docs" / "figures"
 DEEP = ROOT / "data" / "cn_futures" / "analysis" / "deep"
+
+
+def tex(formula: str) -> str:
+    """行间 TeX 公式（离线渲染为内联 SVG，随主题变色）。"""
+    return f'<div class="texblock">{tex_svg(formula, fontsize=13)}</div>'
+
+
+def texi(formula: str) -> str:
+    """行内 TeX 公式。"""
+    return tex_svg(formula, fontsize=11, display=False)
 
 
 def b64(rel: str) -> str:
@@ -162,6 +175,12 @@ tr:last-child td { border-bottom: none; }
 .formula { background: var(--chip); border-radius: 6px; padding: .7rem 1rem;
   font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88rem;
   overflow-x: auto; margin: .7rem 0; line-height: 1.7; }
+.texblock { background: var(--chip); border-radius: 6px; padding: .8rem 1rem;
+  margin: .8rem 0; text-align: center; overflow-x: auto; color: var(--ink); }
+.texblock svg { vertical-align: middle; max-width: 100%; }
+.texi svg { vertical-align: -0.35em; }
+.texnote { font-size: .85rem; color: var(--ink-soft); text-align: center;
+  margin-top: -.4rem; margin-bottom: .8rem; }
 code { background: var(--chip); border-radius: 4px; padding: .08rem .4rem;
   font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85em; }
 .callout { border-left: 3px solid var(--accent); background: var(--card);
@@ -192,16 +211,19 @@ def build() -> str:
 事件概率变化与中国商品期货收益之间的关系。我们把 388 个事件市场的逐笔成交转换为
 按国内期货交易时段切分的 logit 概率变化信号（防前视），与 88 个品种的主力连续
 分钟数据在约 75 个重叠交易日（2026-01-05 至 04-28，美伊冲突主导期）上对齐。
-四个主要发现：（一）信息吸收强烈且集中在"美国活跃时段对应的国内闭市段"——
-油价类市场信号与 INE 原油（SC）开盘跳空的相关达 0.75-0.86；（二）控制同窗口
-国际基准（USO/GLD/SLV）后，价格类市场的解释力全部消失（H1 偏零检验通过），
-但<b>中东冲突事件概率对 SC 保留独立增量（t=3.68）</b>，与 SC 可交割中东油种的
-供给风险敞口一致；（三）"吸收后反转"只在油价主题成立（β₀=+507bp/σ，
-β₁₋₃≈−230..−330），且分解显示反转的约八成来自 SC−USO 价差分量——
-是<b>升水回归</b>而非全球过度反应；（四）事件研究中"新市场创建"是最强事件类型
-（2 小时符号化 CAR +41bp）。全部设计经 23 个智能体对抗审查修复 17 项缺陷，
-消融实验显示核心结论对聚合粒度、时效阈值、截断与权重选择稳健。样本短且由
-单一事件主导，所有结论为探索性。</div>
+五个主要发现：（一）信息吸收强烈且集中在"美国活跃时段对应的国内闭市段"——
+油价类市场信号与 INE 原油（SC）开盘跳空的相关达 0.75-0.86；但安慰剂检验显示
+原始吸收含有大量宏观共同因子成分（同一信号对机制无关的锰硅 +0.67、对股指
+−0.57），因此（二）才是承重检验：控制同窗口国际基准（USO/GLD/SLV）后，
+价格类市场的解释力全部消失（H1 偏零检验通过），<b>唯有中东冲突事件概率对
+SC 保留独立增量（t=3.68）</b>，与 SC 可交割中东油种的供给风险敞口一致；
+（三）"吸收后反转"只在油价主题成立（β₀=+507bp/σ，β₁₋₃≈−230..−330），
+分解显示反转的约八成来自 SC−USO 价差分量——是<b>升水回归</b>而非全球过度
+反应；（四）"新市场创建"是最强事件类型（2 小时符号化 CAR +41bp）；
+（五）方向之外，<b>信号强度显著预测波动</b>：|s| 在控制昨日已实现波动率后
+仍预测 SC 日盘 RV（t=4.4，R²=0.64）。全部设计经 23 个智能体对抗审查修复
+17 项缺陷；消融（11 变体）与循环置换检验（p&lt;0.0005）支持核心结果非
+设定依赖、非统计巧合。样本短且由单一事件主导，所有结论为探索性。</div>
 
 <div class="toc"><b>目录</b><br>
 <a href="#s1">1 引言</a><br><a href="#s2">2 制度背景</a><br>
@@ -209,7 +231,7 @@ def build() -> str:
 <a href="#s5">5 计量工具</a><br><a href="#s6">6 吸收：设计与结果</a><br>
 <a href="#s7">7 预测性与"吸收后反转"</a><br><a href="#s8">8 因子结构与叠加</a><br>
 <a href="#s9">9 双向传导与分钟级剖面</a><br><a href="#s10">10 事件研究</a><br>
-<a href="#s11">11 国际基准控制（核心检验）</a><br><a href="#s12">12 消融实验</a><br>
+<a href="#s11">11 国际基准控制（核心检验）</a><br><a href="#s12">12 消融与扩充稳健性实验</a><br>
 <a href="#s13">13 结论、局限与推广</a><br><a href="#refs">参考文献</a><br>
 <a href="#appA">附录 A 窗口边界</a><br><a href="#appB">附录 B 术语表</a></div>
 
@@ -284,7 +306,8 @@ YES 价格 p ∈ (0,1) 即市场隐含概率。本文数据（daily_aligned 层�
 把逐笔按 15 分钟分桶（桶为左闭右开 [b−15′, b)，<b>标签取右端</b>——标签 T 的桶
 只含严格早于 T 的成交，这是全文防前视的基石）。桶内按 taker 方向分成两堆，
 各取成交额加权中位数，再取两向平均：
-<div class="formula">p̄_b = ½ [ wmed(p | D=+1) + wmed(p | D=−1) ]　（只有单向成交时取该向）</div>
+{tex(r"\bar p_b \;=\; \frac{{1}}{{2}}\left[\,\mathrm{{wmed}}(p \mid D{{=}}{{+}}1) \;+\; \mathrm{{wmed}}(p \mid D{{=}}{{-}}1)\,\right]")}
+<div class="texnote">wmed = 成交额加权中位数；只有单向成交时取该向。</div>
 <div class="why"><b>为什么</b>：主动买单贴卖一价（偏高）、主动卖单贴买一价（偏低），
 逐笔价在买卖间来回跳并不代表概率变化（bid-ask bounce）。两向分别聚合再平均
 ≈ 中间价。加权中位数抗单笔异常。按量加权的思想来自 Roan 原文第四章的 VWAP
@@ -293,7 +316,8 @@ YES 价格 p ∈ (0,1) 即市场隐含概率。本文数据（daily_aligned 层�
 而非"涨到 0.62 又跌回 0.60"。</div>
 
 <div class="step"><span class="tag">第 2 步 · logit 变换</span>
-<div class="formula">ℓ(p) = ln( p / (1−p) )，p 先截断到 [0.02, 0.98]</div>
+{tex(r"\ell(p) \;=\; \ln\frac{{p}}{{1-p}}, \qquad p \in [0.02,\; 0.98]")}
+<div class="texnote">p 超出区间先截断，再取 logit。</div>
 <div class="why"><b>为什么不用概率差</b>：0.05→0.15 意味着事件相对可能性翻了三倍，
 0.50→0.60 只是温和修正，但两者概率差同为 0.10。Roan 原文第二章用 Bregman/KL
 散度论证同一件事：欧氏距离不适合概率空间，尾部变化携带更多信息。logit 恰好
@@ -303,7 +327,7 @@ logit 在 0/1 发散（对应原文 §3.4 的边界梯度爆炸）：临近结�
 
 <div class="step"><span class="tag">第 3 步 · 窗口切分与端点差</span><br>
 每个时段窗口 w = [t₀, t₁) 的信号是两端 logit 之差：
-<div class="formula">s_w = ℓ( p̄(t₁⁻) ) − ℓ( p̄(t₀⁻) )</div>
+{tex(r"s_w \;=\; \ell(\bar p(t_1^-)) \;-\; \ell(\bar p(t_0^-)), \qquad w=[t_0,\; t_1)")}
 端点价取该时刻前最后一个桶（LOCF）。防前视三细节：桶标签严格早于语义（第 1 步）；
 恰在 t₁ 时刻的成交归下一窗口；端点距最后一笔成交超过 120 分钟（p_age）视为
 过时，该窗口记缺失——LOCF 不允许无限延伸。市场结算之后的窗口记缺失
@@ -341,8 +365,8 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
 <h3>6.1 设计</h3>
 <p>"吸收"回答：信号动的窗口内，期货是否同方向动。对每个（主题×品种），
 把逐日窗口信号与<b>恰好同窗口</b>的期货收益配对回归：</p>
-<div class="formula">r_w(t) = α + β_abs · s_w(t) + ε(t)　（HAC；换月日剔除）
-吸收 ≝ β_abs &gt; 0 且显著。注意：同期关系，不构成预测。</div>
+{tex(r"r_w(t) \;=\; \alpha \;+\; \beta_{{\mathrm{{abs}}}}\, s_w(t) \;+\; \varepsilon_t")}
+<div class="texnote">Newey-West 标准误；换月日剔除。吸收 ≝ β<sub>abs</sub> &gt; 0 且显著——同期关系，不构成预测。</div>
 <p>四段窗口各配各的收益：傍晚段配"前收盘→夜盘开"跳空、夜盘段配夜盘内收益、
 凌晨段配"夜盘收→日盘开"跳空、日盘段配日盘内收益。</p>
 <h3>6.2 结果：吸收集中在美国活跃时段对应的闭市段</h3>
@@ -372,9 +396,10 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
          "窗口敏感性：截止 09:00 往回累积 K 小时的信号对当日日盘收益的相关，"
          "K 从 3h 到 120h。全程弱且无形态。")}
 <h3>7.2 局部投影与"吸收后反转"的精确判据</h3>
-<div class="formula">r(t→t+h) = α_h + β_h · s_all(t) + ε　h = 0..8（HAC 滞后 ≥ h）
-r(t→t+h) ≝ 第 t+1 至 t+h 交易日的累计对数收益；h=0 取当日。
-<b>吸收后反转 ≝ β₀ &gt; 0 且 β_h &lt; 0 (h ≥ 1)</b></div>
+{tex(r"r_{{t\to t+h}} \;=\; \alpha_h \;+\; \beta_h\, s_t \;+\; \varepsilon_{{t,h}}, \qquad h = 0,1,\dots,8")}
+{tex(r"\beta_0 > 0 \;\;\wedge\;\; \beta_h < 0 \quad (h \geq 1)")}
+<div class="texnote">同时满足上式即判定为"吸收后反转"。</div>
+<div class="texnote">r<sub>t→t+h</sub> 为第 t+1 至 t+h 交易日累计对数收益（h=0 取当日）；每个 h 单独回归，HAC 滞后 ≥ h。</div>
 <p>对每个视界单独回归（局部投影）的好处：不必假设统一的 AR 动力学，
 β_h 路径直接可读——"信号高一个标准差的那天之后，价格平均往哪儿走"。</p>
 {fig_tag("deep/h_irf.png",
@@ -426,10 +451,10 @@ r(t→t+h) ≝ 第 t+1 至 t+h 交易日的累计对数收益；h=0 取当日。
 
 <h2 id="s10">10　事件研究</h2>
 <p>三类事件的精确定义（15 分钟桶 b 上，限 SC 相关主题）：</p>
-<div class="formula">E1 价格跳：|Δℓ_b| &gt; 3 × 1.4826 × MAD₄₈(Δℓ) 且桶成交 ≥ $10k
-E2 量爆发：usdc_b &gt; 10 × median₄₈(usdc) 且笔数 ≥ 20
-E3 新市场：登记市场的第一笔成交
-（MAD₄₈ = 过去 48 桶的中位数绝对偏差，1.4826 把 MAD 换算成稳健 σ）</div>
+{tex(r"\mathrm{{E1}}:\;\; |\Delta\ell_b| > 3 \times 1.4826 \cdot \mathrm{{MAD}}_{{48}}(\Delta\ell) \;\;\wedge\;\; \mathrm{{usdc}}_b \geq \mathrm{{10k}}")}
+{tex(r"\mathrm{{E2}}:\;\; \mathrm{{usdc}}_b \;>\; 10 \times \mathrm{{med}}_{{48}}(\mathrm{{usdc}}) \;\;\wedge\;\; n_b \geq 20")}
+<div class="texnote"><b>E3</b>：登记市场的第一笔成交（无公式，事件时刻 = first_ts）。</div>
+<div class="texnote">MAD₄₈ = 过去 48 桶中位数绝对偏差；1.4826·MAD 是稳健 σ 估计。</div>
 <p>对落在 SC 夜盘内的事件，取事件后 0-120 分钟 SC 累计收益，按
 orientation×sign(Δℓ) 符号化后平均；置信带 = 500 次事件重抽自助法。</p>
 {fig_tag("deep/g_event_study.png",
@@ -441,9 +466,8 @@ orientation×sign(Δℓ) 符号化后平均；置信带 = 500 次事件重抽自
 <h2 id="s11">11　国际基准控制（本文的核心检验）</h2>
 <h3>11.1 设计</h3>
 <p>把与信号窗口<b>完全同界</b>的基准收益加入吸收回归：</p>
-<div class="formula">r_w(t) = α + β_s · s_w(t) + β_b · b_w(t) + ε
-b_w = 同窗口 USO/GLD/SLV 对数收益（端点 LOCF，与信号同口径）
-问题：β_s 在控制 b_w 后是否存活。</div>
+{tex(r"r_w(t) \;=\; \alpha \;+\; \beta_s\, s_w(t) \;+\; \beta_b\, b_w(t) \;+\; \varepsilon_t")}
+<div class="texnote">b<sub>w</sub> = 同窗口国际基准（USO/GLD/SLV）对数收益，端点 LOCF 与信号同口径。问题：β<sub>s</sub> 控制 b<sub>w</sub> 后是否存活。</div>
 <h3>11.2 结果</h3>
 {intl_html}
 <p>表格读法（蓝色 t = 控制后死亡，橙色 = 幸存）：</p>
@@ -463,8 +487,9 @@ USO 自身 t=5.64 同在）。控制了国际油价当期变动后，中东冲�
          "控制前（蓝）后（橙）的信号系数 t 值。多数配对控制后死亡；"
          "mideast×SC·gap 是唯一控制后反而增强的。")}
 <h3>11.3 反转机制判别：升水回归，不是全球过度反应</h3>
-<p>把 SC 收对收拆成两个可加分量：r_SC = b_USO（国际分量）+ q（价差/升水分量，
-q ≝ r_SC − b_USO），对两个分量分别做局部投影：</p>
+<p>把 SC 收对收拆成两个可加分量，对每个分量分别做局部投影：</p>
+{tex(r"r^{{\mathrm{{SC}}}}_t \;=\; b^{{\mathrm{{USO}}}}_t \;+\; q_t, \qquad q_t \;\equiv\; r^{{\mathrm{{SC}}}}_t - b^{{\mathrm{{USO}}}}_t")}
+<div class="texnote">b = 国际（USO）分量，q = 价差 / 升水分量。</div>
 {fig_tag("deep/i2_irf_decomposition.png",
          "oil_price 信号下三个分量的 β_h。当日吸收 +507 中 USO 分量占 +424（84%），"
          "但 h=1 的反转 −226 中价差分量贡献 −184（81%）且 USO 分量仅 −41——"
@@ -479,20 +504,71 @@ q ≝ r_SC − b_USO），对两个分量分别做局部投影：</p>
 真正带独立信息的是<b>中东事件概率对开盘跳空的增量</b>（t=3.68）——它反映
 SC 可交割中东油种的特有风险敞口，是本研究最值得继续追的线索。</div>
 
-<h2 id="s12">12　消融实验</h2>
-<p>方法：以基线（15 分钟桶、p_age 120 分钟、截断 [0.02,0.98]、√usdc 权重、
-时点化准入开、保留近结算）为中心，<b>一次只改一个因子</b>，看两个头部吸收结论
-的变化。若结论只在特定设定下成立即不可信。</p>
+<h2 id="s12">12　消融与扩充稳健性实验</h2>
+<h3>12.1 设计选择消融（OFAT）</h3>
+<p>以基线（15 分钟桶、p_age 120 分钟、截断 [0.02,0.98]、√usdc 权重、时点化
+准入开、保留近结算）为中心，<b>一次只改一个因子</b>，看两个头部吸收结论的
+变化。若结论只在特定设定下成立即不可信。</p>
 {ablation_html}
 {fig_tag("deep/j_ablation.png",
          "消融点图（虚线=基线）。核心吸收对桶宽、p_age、截断、权重与准入选择"
-         "均稳健；具体读数见上表。")}
+         "均稳健；唯一敏感项是 p_age 无上限——无限 LOCF 把过时价格掺入信号，"
+         "把 mideast 夜盘从 0.38 稀释到 0.20，反证时效过滤的必要性。")}
+
+<h3>12.2 安慰剂检验与循环置换（结果是否品种特异、是否统计巧合）</h3>
+<p><b>安慰剂设计</b>：把 SC 的信号原样作用在机制上无关的品种（JD 鸡蛋、C 玉米、
+SM 锰硅、IF 股指）上，若"吸收"是油价特异的传导，安慰剂应接近零。
+<b>结果并不干净</b>：oil 信号对锰硅 +0.67、对股指 −0.57，mideast 对玉米 +0.36。
+这说明样本期的原始吸收含有大量<b>宏观共同因子</b>（风险开关：冲突升级 →
+商品普涨、股指下跌）成分。诚实的推论是：未控共同因子的吸收系数不能解读为
+品种特异的传导，<b>第 11 节的国际基准控制才是承重检验</b>——mideast×SC 的
+增量（t=3.68）正是在剔除共同因子（USO）后幸存的部分。</p>
+<p><b>循环置换检验</b>：把信号序列整体循环移位（保留各自的自相关结构、只破坏
+两序列的日历同步）2,000 次，真实 |r| 在零分布中的位置给出经验 p 值：
+oil×SC 真实 0.73 对零分布 99 分位 0.29（p&lt;0.0005）；mideast×SC 真实 0.44 对
+0.39（p&lt;0.0005）。同步性本身不是统计巧合。</p>
+{fig_tag("deep/k1_placebo_permutation.png",
+         "(a) 真实配对（SC，橙）与四个安慰剂品种的闭市 gap 吸收：安慰剂不为零，"
+         "揭示宏观共同因子；(b) oil×SC 的循环置换零分布与真实值（红线）。")}
+
+<h3>12.3 信号分位数组合与正负不对称</h3>
+<p><b>分位数组合</b>（回归之外的无参数检验）：按 s_gap 五分位分组，各组闭市
+收益均值单调递增——关系不是由函数形式假设造出来的。<b>不对称</b>：mideast
+主题降级日（s&lt;0）的单位定价强于升级日（663 vs 171 bp/单位 logit，
+t=6.9 vs 5.8）——坏消息涨得多、好消息跌得更多在本样本呈现为"降温更被认真
+定价"；oil 主题降级日样本不足（n=17）不可判。</p>
+{fig_tag("deep/k2_quantile_asymmetry.png",
+         "(a) s_gap 五分位组的 SC 闭市收益均值 ± 标准误：单调；"
+         "(b) 升级日 vs 降级日分别估计的吸收 β 的 HAC t。")}
+
+<h3>12.4 三变量分钟剖面：PM 对国际市场也无领先</h3>
+<p>规范 §5.2 的三变量设计：美国活跃时段（北京 21:00-05:00）内，主题 5 分钟
+innovation 对 SC 与对 USO 的交叉相关双剖面。若 Polymarket 真的先于价格市场
+反映信息，对 USO 也应有正滞后领先。结果：对 USO 的正滞后相关 ≈ 0（±0.02 内），
+对 SC 最大 +0.05——<b>PM、USO、SC 三者在 5 分钟粒度内同步</b>，信息链上
+Polymarket 不领先国际市场，国内市场在开市时段也无显著滞后。</p>
+{fig_tag("deep/k4_pm_uso_leadlag.png",
+         "(a) oil_price、(b) mideast_conflict 主题 innovation 对 USO（橙）与 "
+         "SC（蓝）的 ±60 分钟交叉相关：正滞后侧均无领先。")}
+
+<h3>12.5 波动率预测：方向不可测，风险可测</h3>
+<p>HAR-lite 回归：SC 日盘已实现波动率（5 分钟收益平方和的平方根）对隔夜信号
+强度 |s_gap| 与昨日 RV：</p>
+{tex(r"\mathrm{{RV}}^{{\mathrm{{day}}}}_t \;=\; \alpha \;+\; \gamma\, |s^{{\mathrm{{gap}}}}_t| \;+\; \rho\, \mathrm{{RV}}^{{\mathrm{{day}}}}_{{t-1}} \;+\; \varepsilon_t")}
+<p>oil：γ 的 t=4.4（R²=0.64）；mideast：t=3.1（R²=0.42）。隔夜事件概率的
+波动幅度在控制波动率惯性后仍预测当日风险——即便方向没有剩余可预测性
+（§7.1），<b>风险维度是可预测的</b>，对保证金、期权与仓位管理有直接含义。</p>
+{fig_tag("deep/k5_volatility.png",
+         "|s_gap|（oil_price）与 SC 日盘已实现波动率：正相关，"
+         "回归控制昨日 RV 后仍显著（t=4.4）。")}
 
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>
 <div class="finding"><span class="no">一</span>信息传导真实且时段结构清晰：
 Polymarket 在国内闭市期间积累的信息在开盘跳空与夜盘中被系统性定价，最强通道
-对应美国主活跃时段（凌晨闭市段 +0.70、傍晚段 +0.86）。</div>
+对应美国主活跃时段（凌晨闭市段 +0.70、傍晚段 +0.86）；置换检验排除统计巧合
+（p&lt;0.0005）。但安慰剂显示原始吸收大半是宏观共同因子（对锰硅 +0.67、
+股指 −0.57），品种特异的部分须由结论二的控制检验认定。</div>
 <div class="finding"><span class="no">二</span>控制国际基准后，价格类市场无增量
 （H1 通过），<b>中东事件概率对 SC 开盘跳空保留独立增量（t=3.68）</b>——
 与 INE 可交割中东油种的供给风险敞口一致。这是本研究唯一在最严格检验下
@@ -503,8 +579,11 @@ Polymarket 在国内闭市期间积累的信息在开盘跳空与夜盘中被系
 <div class="finding"><span class="no">四</span>事件层面，"新市场创建"是最强
 事件类型（120 分钟 +41bp）；价格跳本身几分钟内吸收完毕，无分钟级可利用领先。</div>
 <div class="finding"><span class="no">五</span>反向传导不对称：价格阶梯类市场
-跟随期货（AU→PM +0.52），事件类市场双向皆弱——构造信号时应剔除价格类市场
-或仅作对照。</div>
+跟随期货（AU→PM +0.52），事件类市场双向皆弱；三变量分钟剖面显示 PM 对 USO
+也无领先——信息链上 Polymarket 与国际市场同步，而非领先者。</div>
+<div class="finding"><span class="no">六</span>方向之外风险可测：|s_gap| 在控制
+昨日 RV 后仍预测 SC 日盘已实现波动率（t=4.4，R²=0.64）——事件概率的"动静大小"
+是干净的波动率信号，与方向预测力的缺失并行不悖。</div>
 <h3>13.2 局限</h3>
 <ul>
 <li>约 75 个重叠交易日、单一美伊冲突主导；滚动相关显示吸收强度在事件热度
