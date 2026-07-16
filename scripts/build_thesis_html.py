@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import v3_report_sections  # noqa: E402
 from pub_style import tex_svg  # noqa: E402
 
 FIG = ROOT / "docs" / "figures"
@@ -277,6 +278,14 @@ code { background: var(--chip); border-radius: 4px; padding: .08rem .4rem;
 .finding { background: var(--card); border: 1px solid var(--line);
   border-radius: 8px; padding: .9rem 1.2rem; margin: .8rem 0; }
 .finding .no { color: var(--accent); font-weight: 700; margin-right: .5rem; }
+.part { margin: 5rem 0 1.5rem; padding: 1.4rem 1.7rem; background: var(--chip);
+  border-left: 4px solid var(--accent); border-radius: 0 10px 10px 0; }
+.part .kicker { font-size: .78rem; letter-spacing: .16em; color: var(--accent);
+  text-transform: uppercase; font-weight: 700; }
+.part .pt { font-family: "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+  font-size: 1.5rem; font-weight: 700; margin: .3rem 0 .6rem;
+  text-wrap: balance; }
+.part p { margin: 0; font-size: .95rem; }
 ul, ol { padding-left: 1.4rem; } li { margin: .45rem 0; }
 .refs { font-size: .88rem; } .refs li { margin: .6rem 0; }
 .footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid
@@ -289,6 +298,8 @@ def build() -> str:
     bt_html, lev_html, vt_html = backtest_tables_html()
     chain_html = chain_table_html()
     suff_html, iv_html = surrogate_tables_html()
+    part2_html = v3_report_sections.build_part2(tex, fig_tag)
+    appc_html = v3_report_sections.build_appendix_c()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -322,10 +333,13 @@ def build() -> str:
             r"\qquad F_{1st} = t_a^2"),
     ]
 
-    return f"""<title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
+    return f"""<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
 <style>{STYLE}</style>
 <main>
-<div class="eyebrow">Alpha-Data 研究报告 · feat/cn-futures-polymarket · 2026-07-14</div>
+<div class="eyebrow">Alpha-Data 研究报告 · feat/cn-futures-polymarket ·
+2026-07-16（v2，含第二部分）</div>
 <h1>Polymarket 事件概率与中国商品期货：<br>跨市场传导、时段吸收与升水回归</h1>
 
 <div class="abstract"><b class="hd">摘要</b>　本文研究去中心化预测市场 Polymarket 的
@@ -344,17 +358,40 @@ SC 保留独立增量（t=3.68）</b>，与 SC 可交割中东油种的供给风
 （五）方向之外，<b>信号强度显著预测波动</b>：|s| 在控制昨日已实现波动率后
 仍预测 SC 日盘 RV（t=4.4，R²=0.64）。全部设计经 23 个智能体对抗审查修复
 17 项缺陷；消融（11 变体）与循环置换检验（p&lt;0.0005）支持核心结果非
-设定依赖、非统计巧合。样本短且由单一事件主导，所有结论为探索性。</div>
+设定依赖、非统计巧合。样本短且由单一事件主导，所有结论为探索性。
+<br><br><b class="hd">第二部分（v3，第 14-18 节）</b>　针对第一部分的三个
+局限（样本、识别、功效），按《识别与统计功效 v3》研究规范重建管道：
+自爬链上成交把重叠样本延长至 <b>127 个交易日</b>（+70%）；logit 状态空间
+滤波、族内单调投影与平台公共因子正交化构成新测量层；事件资格与统计功效
+<b>双门控</b>决定影响系数是否允许估计。四项主要结果：（一）链上结算事件
+补爬（结算覆盖 56/425 → 455/492）使功效门控放行四个组合，<b>中东冲突类
+事件的影响系数首次可识别</b>（满 surprise 对应 SC 次日 +6.0%、AU +4.4%，
+训练窗 t&gt;4）；（二）第一部分的头部结论在样本翻倍后全部保持并增强
+（mideast×SC 控制 USO 后 t 3.68→4.94）；（三）同维度对比下 v3 信号在
+6/8 品种的 OOS 表现优于 v1.1 基线（组合降噪成立），但两套信号对<b>次日
+方向</b>的 OOS 增量预测力整体仍不为正（唯豆粕 M +5.4%，Clark-West 显著）
+——Polymarket 信息的变现通道是闭市时段同期吸收与事件风险管理，不是隔日
+预测；（四）功效门控在劣质结算数据下正确全拦、数据补齐后精确放行的对照
+实验，直接演示了"先算功效再估计"的价值。</div>
 
 <div class="toc"><b>目录</b><br>
+<b>第一部分（v1.1，样本至 04-28）</b><br>
 <a href="#s1">1 引言</a><br><a href="#s2">2 制度背景</a><br>
 <a href="#s3">3 数据</a><br><a href="#s4">4 信号构造（五步推导）</a><br>
 <a href="#s5">5 计量工具</a><br><a href="#s6">6 吸收：设计与结果</a><br>
 <a href="#s7">7 预测性与"吸收后反转"</a><br><a href="#s8">8 因子结构与叠加</a><br>
 <a href="#s9">9 双向传导与分钟级剖面</a><br><a href="#s10">10 事件研究</a><br>
 <a href="#s11">11 国际基准控制（核心检验）</a><br><a href="#s12">12 消融与扩充稳健性实验</a><br>
-<a href="#s13">13 结论、局限与推广</a><br><a href="#refs">参考文献</a><br>
-<a href="#appA">附录 A 窗口边界</a><br><a href="#appB">附录 B 术语表</a></div>
+<a href="#s13">13 结论、局限与推广</a><br>
+<b>第二部分（v3，样本至 07-13）</b><br>
+<a href="#s14">14 数据扩展：自爬链上管线</a><br>
+<a href="#s15">15 测量层：滤波、投影与事件几何</a><br>
+<a href="#s16">16 双门控与影响层</a><br>
+<a href="#s17">17 增量预测与吸收复核</a><br>
+<a href="#s18">18 第二部分结论</a><br>
+<a href="#refs">参考文献</a><br>
+<a href="#appA">附录 A 窗口边界</a><br><a href="#appB">附录 B 术语表</a><br>
+<a href="#appC">附录 C v3 术语与产物</a></div>
 
 <h2 id="s1">1　引言</h2>
 <p><b>动机。</b>Polymarket 是一个用真金白银给"事件会不会发生"定价的市场：
@@ -843,6 +880,8 @@ episode 复现——这是把"探索性"升级为"结论"的必要条件。</li>
 实盘决策。</li>
 </ul>
 
+{part2_html}
+
 <h2 id="refs">参考文献</h2>
 <ol class="refs">
 <li>Roan (@RohOnChain). <i>The Math Needed for Trading on Polymarket (Complete
@@ -859,6 +898,13 @@ Heteroskedasticity and Autocorrelation Consistent Covariance Matrix.
 Rate. <i>JRSS-B</i>, 57(1).</li>
 <li>研究规范 v3.2《Polymarket 隐含概率对国内商品期货收益的增量预测力研究》；
 仓库文档 <code>docs/DATA_GUIDE.md</code>、<code>docs/mapping_taxonomy.md</code>（v1.1）。</li>
+<li>Clark, T. &amp; West, K. (2007). Approximately Normal Tests for Equal
+Predictive Accuracy in Nested Models. <i>Journal of Econometrics</i>, 138(1).</li>
+<li>研究规范《Polymarket 信息到中国期货收益：识别、统计功效与门控式研究框架
+v3.0》（2026-07-16），仓库
+<code>research/Polymarket_中国期货预测_识别与统计功效_v3.pdf</code>；实现说明
+<code>docs/v3_framework_results.md</code>；数据来源说明
+<code>docs/POLYMARKET_CRAWL.md</code>（自爬链上管线）。</li>
 </ol>
 
 <h2 id="appA">附录 A　窗口边界（以 SC 为例，夜盘收盘 02:30）</h2>
@@ -896,10 +942,15 @@ night/gap_am 无定义，闭市整段计入 gap_pm。</p>
 <tr><td>换月 roll</td><td>主力合约切换；跨合约收益是拼接假象，剔除</td></tr>
 </table></div>
 
-<div class="footer">复现：<code>build_cn_futures_db.py → select_polymarket_markets.py →
-analyze_cn_futures_polymarket.py → deep_analysis_cn_polymarket.py →
-intl_benchmark_analysis.py → ablation_cn_polymarket.py → build_thesis_html.py</code>
-· 55+ 项 pytest · 管线经 23 智能体对抗审查（17 项缺陷修复）· 分支
+{appc_html}
+
+<div class="footer">复现（第一部分）：<code>build_cn_futures_db.py →
+select_polymarket_markets.py → analyze_cn_futures_polymarket.py →
+deep_analysis_cn_polymarket.py → intl_benchmark_analysis.py →
+ablation_cn_polymarket.py</code>；（第二部分）：<code>crawl_polymarket_chain.py →
+v3_build_tape.py → v3_measurement.py → v3_baseline_extended.py → v3_layer5.py →
+v3_figures.py → build_thesis_html.py</code>
+· 74 项 pytest · 第一部分管线经 23 智能体对抗审查（17 项缺陷修复）· 分支
 feat/cn-futures-polymarket</div>
 </main>
 """
