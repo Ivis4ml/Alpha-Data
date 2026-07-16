@@ -276,7 +276,17 @@ def fit_filter(
         {"condition_id": ids, "q": best_q, "r0": best_r,
          "loglik": ll_final, "n_obs": n_obs}
     )
+    states = _package_states(obs, y, grid, ids, states_raw)
+    return FilterOutput(params=params, states=states)
 
+
+def _package_states(
+    obs: pd.DataFrame,
+    y: np.ndarray,
+    grid: np.ndarray,
+    ids: list[str],
+    states_raw: list,
+) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     obs_mask = ~np.isnan(y)
     last_ts_map = obs.set_index(["condition_id", "bucket_end"])["last_ts"]
@@ -300,7 +310,60 @@ def fit_filter(
     states["nu_std"] = states["nu"] / np.sqrt(states["S"])
     key = pd.MultiIndex.from_frame(states[["condition_id", "bucket_end"]])
     states["last_ts"] = last_ts_map.reindex(key).to_numpy()
-    return FilterOutput(params=params, states=states)
+    return states
+
+
+def apply_filter(
+    obs: pd.DataFrame,
+    params: pd.DataFrame,
+    *,
+    agg_minutes: int = 15,
+    q_mult: pd.DataFrame | None = None,
+) -> FilterOutput:
+    """用**给定参数**（训练窗冻结）对观测做一遍因果滤波（point-in-time 协议）。
+
+    Kalman 递推本身是因果的；时间前视只可能来自用未来数据估计的 ``(q, r0)``。
+    本函数配合"参数只用训练窗估计"使用：训练窗内无观测的市场（训练截止后
+    才诞生）回退为给定参数表的中位数（调用方应报告回退数量）。
+
+    Args:
+        obs: :func:`bucket_observations` 输出（可为全样本）。
+        params: ``[condition_id, q, r0]``（:func:`fit_filter` 在训练窗上的输出）。
+        agg_minutes / q_mult: 同 :func:`fit_filter`。
+    """
+    y, hs2, inv_n, _, ids, grid = _dense_arrays(obs, agg_minutes=agg_minutes)
+    T, N = y.shape
+    step_hours = agg_minutes / 60.0
+
+    pmap = params.set_index("condition_id")
+    q_med = float(pmap["q"].median())
+    r_med = float(pmap["r0"].median())
+    qv = pmap["q"].reindex(ids).fillna(q_med).to_numpy(dtype="float64")
+    rv = pmap["r0"].reindex(ids).fillna(r_med).to_numpy(dtype="float64")
+
+    mult_arr: np.ndarray | None = None
+    if q_mult is not None and not q_mult.empty:
+        mult_arr = np.ones((T, N))
+        id_idx = {c: i for i, c in enumerate(ids)}
+        step = agg_minutes * 60
+        t0 = int(grid[0])
+        sub = q_mult[q_mult["condition_id"].isin(id_idx)]
+        ti = ((sub["bucket_end"].to_numpy(dtype="int64") - t0) // step).astype("int64")
+        mi = sub["condition_id"].map(id_idx).to_numpy(dtype="int64")
+        keep = (ti >= 0) & (ti < T)
+        mult_arr[ti[keep], mi[keep]] = sub["mult"].to_numpy(dtype="float64")[keep]
+
+    ll, states_raw = _run_filter(
+        y, hs2, inv_n, qv, rv,
+        step_hours=step_hours, q_mult=mult_arr, collect_states=True,
+    )
+    n_obs = (~np.isnan(y)).sum(axis=0)
+    out_params = pd.DataFrame(
+        {"condition_id": ids, "q": qv, "r0": rv, "loglik": ll, "n_obs": n_obs,
+         "fallback": ~pd.Series(ids).isin(pmap.index).to_numpy()}
+    )
+    states = _package_states(obs, y, grid, ids, states_raw)
+    return FilterOutput(params=out_params, states=states)
 
 
 def term_multiplier_curve(

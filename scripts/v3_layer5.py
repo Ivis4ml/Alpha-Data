@@ -105,11 +105,12 @@ def etf_window_returns(px: pd.Series, win: pd.DataFrame) -> pd.DataFrame:
     out["b_pre"] = at(win["day_start"]) - at(win["gap1_start"])
     out["b_night"] = at(win["night_end"]) - at(win["night_start"])
     out["b_day"] = at(win["day_end"]) - at(win["day_start"])
+    out["b_gap_pm"] = at(win["gap1_end"]) - at(win["gap1_start"])
+    out["b_gap_am"] = at(win["gap2_end"]) - at(win["gap2_start"])
     out["b_gap"] = np.where(
         win["night_start"].notna(),
-        (at(win["gap1_end"]) - at(win["gap1_start"]))
-        + (at(win["gap2_end"]) - at(win["gap2_start"])),
-        at(win["gap1_end"]) - at(win["gap1_start"]),
+        out["b_gap_pm"] + out["b_gap_am"],
+        out["b_gap_pm"],
     )
     return out
 
@@ -165,6 +166,51 @@ def clark_west(e0: np.ndarray, e1: np.ndarray, yhat0: np.ndarray,
     return float(np.mean(f)), float(res.tvalues[0])
 
 
+def bh_fdr(pvals: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg q 值（NaN 保留）。"""
+    p = np.asarray(pvals, dtype="float64")
+    q = np.full_like(p, np.nan)
+    ok = np.isfinite(p)
+    ps = p[ok]
+    m = len(ps)
+    if m == 0:
+        return q
+    order = np.argsort(ps)
+    ranked = ps[order] * m / (np.arange(m) + 1)
+    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
+    out = np.empty(m)
+    out[order] = np.clip(ranked, 0, 1)
+    q[ok] = out
+    return q
+
+
+def mbb_pvalue_mean_positive(
+    x: np.ndarray, *, block: int = 10, n_boot: int = 2000, seed: int = 11
+) -> float:
+    """循环块自助：H1 为 mean(x) > 0 的单侧 p（自助均值 <= 0 的占比）。"""
+    x = np.asarray(x, dtype="float64")
+    x = x[np.isfinite(x)]
+    T = len(x)
+    if T < 20:
+        return np.nan
+    rng = np.random.default_rng(seed)
+    n_blocks = int(np.ceil(T / block))
+    count = 0
+    for _ in range(n_boot):
+        starts = rng.integers(0, T, size=n_blocks)
+        idx = (starts[:, None] + np.arange(block)[None, :]).ravel() % T
+        if float(np.mean(x[idx[:T]])) <= 0:
+            count += 1
+    return (count + 1) / (n_boot + 1)
+
+
+def map_theme_col(sub: pd.DataFrame, theme_name: str, col: str,
+                  dates: pd.Series) -> np.ndarray:
+    """(theme 子表, 列) -> 与 dates 对齐的向量。"""
+    s = sub.loc[sub["theme"] == theme_name].set_index("trade_date")[col]
+    return dates.map(s).to_numpy(dtype="float64")
+
+
 def main() -> int:
     t0 = time.time()
     registry = pd.read_parquet(REGISTRY_V3)
@@ -190,23 +236,47 @@ def main() -> int:
         [rets[p][["trade_date", "r_cc"]].assign(product=p) for p in products],
         ignore_index=True)
 
-    # ---- Power Gate 与 Layer 4 ----
+    # ---- Power Gate 与 Layer 4（episode 口径 + ex-ante / ex-post 分离）----
     reg_res = registry.copy()
     reg_res["resolved_at"] = pd.to_datetime(reg_res["resolved_at"], utc=True)
     surp = gates.surprises(reg_res, fam, zpre, outcomes)
+    trade_days_all = rets[products[0]]["trade_date"].tolist()
+    surp_ev = gates.attach_event_date(surp, trade_days_all)
     sigma_r = {
         p: float(rets[p].loc[rets[p]["trade_date"] < TRAIN_END, "r_cc"].std())
         for p in products
     }
-    power = gates.power_table(surp, pd.Series(sigma_r))
-    power.to_parquet(OUT_DIR / "v3_power_table.parquet", index=False)
-    print("== Power Gate 功效表 ==")
-    print(power.to_string(index=False))
 
-    betas = impact.fit_category_beta(surp, returns_cc, power, train_end=TRAIN_END)
+    # ex-ante 门控：只用训练截止前已入收益窗的 episode（决定 OOS 模型结构）。
+    surp_ante = surp_ev.loc[surp_ev["ev_date"] < TRAIN_END]
+    power_ante = gates.power_table_episode(surp_ante, pd.Series(sigma_r))
+    power_ante.to_parquet(OUT_DIR / "v3_power_table_exante.parquet", index=False)
+    print(f"== Power Gate（episode 口径，ex-ante，< {TRAIN_END}）==")
+    print(power_ante.to_string(index=False))
+
+    # ex-post 状态：全样本，仅回答"当前数据量下哪些参数可研究"。
+    power_post = gates.power_table_episode(surp_ev, pd.Series(sigma_r))
+    power_post.to_parquet(OUT_DIR / "v3_power_table_expost.parquet", index=False)
+    print("\n== Power Gate（episode 口径，ex-post 全样本）==")
+    print(power_post.to_string(index=False))
+
+    # 旧市场级口径（family × 周聚类，rho=0.5）保留作对比，标注偏乐观。
+    power_old = gates.power_table(surp, pd.Series(sigma_r))
+    power_old.to_parquet(OUT_DIR / "v3_power_table.parquet", index=False)
+
+    ep = gates.episode_aggregate(surp_ev, agg="mean")
+    betas = impact.fit_category_beta_episode(
+        ep, returns_cc, power_ante, train_end=TRAIN_END)
     betas.to_parquet(OUT_DIR / "v3_impact_betas.parquet", index=False)
-    print("\n== Layer 4 影响系数（训练窗冻结）==")
+    print("\n== Layer 4 影响系数（episode 级，训练窗冻结，wild bootstrap p）==")
     print(betas.to_string(index=False))
+    ep_sum = gates.episode_aggregate(surp_ev, agg="sum")
+    betas_sum = impact.fit_category_beta_episode(
+        ep_sum, returns_cc, power_ante, train_end=TRAIN_END)
+    betas_sum.to_parquet(OUT_DIR / "v3_impact_betas_sum.parquet", index=False)
+    surp_stats = ep.groupby(["theme", "product"])["surprise"].describe()
+    surp_stats.to_parquet(OUT_DIR / "v3_surprise_support.parquet")
+    ep.to_parquet(OUT_DIR / "v3_episodes.parquet", index=False)
 
     theme = impact.impact_signal(theme, betas, col="s_pre_orth")
 
@@ -257,6 +327,11 @@ def main() -> int:
         r_lag = d["r_cc"].shift(1).to_numpy(dtype="float64")
         ctrl_mat.append(r_lag)
         ctrl_cols.append("r_cc_lag")
+        # 自身夜盘收益：09:00 时已实现（02:30 收盘），是"下一可交易时点已经
+        # 吸收了多少"的直接控制（评审修订：信号窗内含本品种夜盘开市段）。
+        if not d["r_night"].isna().all():
+            ctrl_mat.append(np.nan_to_num(d["r_night"].to_numpy(dtype="float64")))
+            ctrl_cols.append("r_night")
         sub_t = theme.loc[theme["product"] == p]
         f_pm = (sub_t.drop_duplicates("trade_date")
                 .set_index("trade_date")["f_pm_pre"])
@@ -353,18 +428,122 @@ def main() -> int:
                     )
 
     oos = pd.DataFrame(oos_rows)
+    preds_all = pd.concat(all_preds, ignore_index=True) if all_preds else pd.DataFrame()
+
+    # ---- 多重检验与稳健性（评审修订：8 品种不是 1 个检验）----
+    from scipy import stats as sps
+    for m in ("M1_base", "M1_v3slim", "M1_v3"):
+        col = f"cw_t_{m}"
+        if col in oos.columns:
+            p1 = 1.0 - sps.norm.cdf(oos[col].to_numpy(dtype="float64"))
+            oos[f"p_cw_{m}"] = p1
+            oos[f"q_cw_{m}"] = bh_fdr(p1)
+
+    mbb_rows: list[dict] = []
+    diff_pooled: list[np.ndarray] = []
+    for p in oos["product"]:
+        sub = preds_all.loc[preds_all["product"] == p]
+        piv = sub.pivot_table(index="t", columns="model", values="yhat")
+        yv = sub.pivot_table(index="t", columns="model", values="y").iloc[:, 0]
+        if "M1_v3slim" not in piv.columns:
+            continue
+        e0 = (yv - piv["M0"]).to_numpy()
+        e1 = (yv - piv["M1_v3slim"]).to_numpy()
+        eb = (yv - piv["M1_base"]).to_numpy()
+        f_cw = e0**2 - e1**2 + (piv["M0"] - piv["M1_v3slim"]).to_numpy() ** 2
+        half = len(f_cw) // 2
+        mse0 = float(np.mean(e0**2))
+        row = {
+            "product": p,
+            "p_mbb_cw_v3slim": mbb_pvalue_mean_positive(f_cw),
+            "dR2_v3slim_h1": 1 - float(np.mean(e1[:half] ** 2))
+            / float(np.mean(e0[:half] ** 2)),
+            "dR2_v3slim_h2": 1 - float(np.mean(e1[half:] ** 2))
+            / float(np.mean(e0[half:] ** 2)),
+        }
+        row["dR2_v3slim"] = 1 - float(np.mean(e1**2)) / mse0
+        mbb_rows.append(row)
+        d = eb**2 - e1**2  # 基线损失 − v3 精简损失（>0 = v3 更好）
+        sd = float(np.std(d, ddof=1))
+        if sd > 0:
+            diff_pooled.append(d / sd)
+    mbb = pd.DataFrame(mbb_rows)
+    pooled = np.concatenate(diff_pooled) if diff_pooled else np.array([])
+    p_pooled = mbb_pvalue_mean_positive(pooled) if len(pooled) else np.nan
+    mbb.to_parquet(OUT_DIR / "v3_oos_robustness.parquet", index=False)
+
     oos.to_parquet(OUT_DIR / "v3_oos_results.parquet", index=False)
     insample = pd.DataFrame(insample_rows)
     insample.to_parquet(OUT_DIR / "v3_insample_gamma.parquet", index=False)
-    if all_preds:
-        pd.concat(all_preds, ignore_index=True).to_parquet(
-            OUT_DIR / "v3_oos_predictions.parquet", index=False)
+    if not preds_all.empty:
+        preds_all.to_parquet(OUT_DIR / "v3_oos_predictions.parquet", index=False)
 
-    print("\n== Layer 5 OOS 增量 R^2（相对 M0）与 Clark-West t ==")
-    print(oos.to_string(index=False))
+    print("\n== Layer 5 OOS 增量 R^2（相对 M0）与 Clark-West t / BH-FDR q ==")
+    show_cols = [c for c in oos.columns if not c.startswith("p_cw")]
+    print(oos[show_cols].to_string(index=False))
+    print("\n== OOS 稳健性（块自助 p、前后半段一致性）==")
+    print(mbb.to_string(index=False))
+    print(f"跨品种合并（基线损失 − v3 精简损失，标准化）块自助单侧 p = {p_pooled:.3f}")
     print("\n== 样本内 HAC gamma（信号项）==")
     if not insample.empty:
         print(insample.loc[insample["t"].abs() >= 1.5].to_string(index=False))
+
+    # ---- 时段拆分（评审修订：夜盘是多数品种真正的下一可交易时点）----
+    session_specs = [
+        # 设计, 目标, 信号列, 基准列, 因子列, 额外控制
+        ("close_to_night", "r_night", "s_gap_pm_orth", "b_gap_pm",
+         "f_pm_gap_pm", []),
+        ("postnight_to_day", "r_day", "s_gap_am_orth", "b_gap_am",
+         "f_pm_gap_am", ["r_night"]),
+    ]
+    sess_rows: list[dict] = []
+    for name, y_col, sig_col, bench_col, fpm_col, extra in session_specs:
+        for p in products:
+            d = rets[p].loc[~rets[p]["roll"].fillna(False)].reset_index(drop=True)
+            if d[y_col].isna().all():
+                continue
+            dates = d["trade_date"]
+            y = d[y_col].to_numpy(dtype="float64")
+            ctrl = []
+            for sym in BENCH.get(p, []) + COMMON_CTRL:
+                etf = etf_returns(sym, p)
+                if etf is None:
+                    continue
+                b = etf.set_index("trade_date")[bench_col]
+                ctrl.append(dates.map(b).to_numpy(dtype="float64"))
+            ctrl.append(d["r_cc"].shift(1).to_numpy(dtype="float64"))
+            for c in extra:
+                ctrl.append(np.nan_to_num(d[c].to_numpy(dtype="float64")))
+            sub_t = theme.loc[theme["product"] == p]
+            if fpm_col in sub_t.columns:
+                f = (sub_t.drop_duplicates("trade_date")
+                     .set_index("trade_date")[fpm_col])
+                ctrl.append(np.nan_to_num(dates.map(f).to_numpy(dtype="float64")))
+            X0 = np.column_stack(ctrl)
+            if sig_col not in sub_t.columns:
+                continue
+            sig_mat = [
+                np.nan_to_num(map_theme_col(sub_t, th, sig_col, dates))
+                for th in sorted(set(sub_t["theme"]))
+            ]
+            X1 = np.column_stack([X0] + sig_mat)
+            preds = expanding_oos(y, {"M0": X0, "M1": X1})
+            if preds.empty:
+                continue
+            piv = preds.pivot_table(index="t", columns="model", values="yhat")
+            yv = preds.pivot_table(index="t", columns="model", values="y").iloc[:, 0]
+            e0 = (yv - piv["M0"]).to_numpy()
+            e1 = (yv - piv["M1"]).to_numpy()
+            _, cw_t = clark_west(e0, e1, piv["M0"].to_numpy(), piv["M1"].to_numpy())
+            sess_rows.append(
+                {"design": name, "product": p, "n_oos": len(piv),
+                 "dR2": 1 - float(np.mean(e1**2)) / float(np.mean(e0**2)),
+                 "cw_t": cw_t}
+            )
+    sessions_oos = pd.DataFrame(sess_rows)
+    sessions_oos.to_parquet(OUT_DIR / "v3_oos_sessions.parquet", index=False)
+    print("\n== 时段拆分 OOS（傍晚信号->夜盘；凌晨信号->日盘，控夜盘收益）==")
+    print(sessions_oos.to_string(index=False))
 
     # ---- 同期吸收复核（扩展样本；含基准控制）----
     absorb_rows: list[dict] = []
@@ -403,33 +582,53 @@ def main() -> int:
     print("\n== 同期吸收复核（扩展样本）==")
     print(absorb.to_string(index=False))
 
-    # ---- H4：tension 对波动的预测 ----
+    # ---- H4：tension 对波动（评审修订：加活动度控制判别"注意力代理"）----
     h4_rows: list[dict] = []
     for p in products:
         sub_t = theme.loc[theme["product"] == p]
         if "tension" not in sub_t.columns:
             continue
-        tn = (sub_t.groupby("trade_date")["tension"].max())
+        tn = sub_t.groupby("trade_date")["tension"].max()
+        n_act = sub_t.groupby("trade_date")["n_active"].max()
+        usdc = (
+            base.loc[base["product"] == p]
+            .groupby("trade_date")[["usdc_night", "usdc_gap", "usdc_day"]]
+            .sum().sum(axis=1)
+        )
         d = rets[p].loc[~rets[p]["roll"].fillna(False)]
         dates = d["trade_date"]
         yv = np.abs(d["r_day"].to_numpy(dtype="float64"))
         x_t = dates.map(tn).to_numpy(dtype="float64")
+        a1 = dates.map(n_act).to_numpy(dtype="float64")
+        a2 = np.log1p(dates.map(usdc).to_numpy(dtype="float64"))
         lag = pd.Series(yv).shift(1).to_numpy()
-        ok = ~(np.isnan(yv) | np.isnan(x_t) | np.isnan(lag))
+        ok = ~(np.isnan(yv) | np.isnan(x_t) | np.isnan(lag)
+               | np.isnan(a1) | np.isnan(a2))
         if ok.sum() < 40:
             continue
-        fit = hac_ols(yv[ok], np.column_stack([x_t[ok], lag[ok]]))
-        h4_rows.append({"product": p, "n": int(ok.sum()),
-                        "beta_tension": float(fit.params[1]),
-                        "t_tension": float(fit.tvalues[1])})
+        fit0 = hac_ols(yv[ok], np.column_stack([x_t[ok], lag[ok]]))
+        fit1 = hac_ols(
+            yv[ok], np.column_stack([x_t[ok], lag[ok], a1[ok], a2[ok]]))
+        h4_rows.append(
+            {"product": p, "n": int(ok.sum()),
+             "t_tension": float(fit0.tvalues[1]),
+             "t_tension_actrl": float(fit1.tvalues[1]),
+             "t_n_active": float(fit1.tvalues[3]),
+             "t_log_usdc": float(fit1.tvalues[4])}
+        )
     h4 = pd.DataFrame(h4_rows)
     h4.to_parquet(OUT_DIR / "v3_h4_tension_vol.parquet", index=False)
-    print("\n== H4：narrative tension 对 |r_day| ==")
+    print("\n== H4：narrative tension 对 |r_day|（无 / 有活动度控制）==")
     print(h4.to_string(index=False))
 
     summary = {
         "train_end": TRAIN_END,
-        "power_decisions": power.groupby("decision")["theme"].count().to_dict(),
+        "power_decisions_exante": power_ante.groupby(
+            "decision")["theme"].count().to_dict(),
+        "power_decisions_expost": power_post.groupby(
+            "decision")["theme"].count().to_dict(),
+        "p_pooled_base_vs_v3slim": None if np.isnan(p_pooled) else round(
+            float(p_pooled), 4),
         "elapsed_sec": round(time.time() - t0, 1),
     }
     (OUT_DIR / "v3_layer5_summary.json").write_text(

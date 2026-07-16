@@ -57,6 +57,109 @@ def next_trading_return(
     return pd.Series(out, index=resolved_at.index)
 
 
+def _ols_beta(x: np.ndarray, y: np.ndarray) -> tuple[float, float, np.ndarray]:
+    """一元 OLS：返回 (beta, 常规 t, 残差)。"""
+    xc = x - x.mean()
+    denom = float(np.sum(xc**2))
+    if denom <= 0:
+        return np.nan, np.nan, np.full(len(y), np.nan)
+    beta = float(np.sum(xc * (y - y.mean())) / denom)
+    resid = y - y.mean() - beta * xc
+    dof = max(len(y) - 2, 1)
+    se = float(np.sqrt(np.sum(resid**2) / dof / denom))
+    return beta, (beta / se if se > 0 else np.nan), resid
+
+
+def wild_bootstrap_p(
+    x: np.ndarray, y: np.ndarray, *, n_boot: int = 4999, seed: int = 7
+) -> float:
+    """Rademacher wild bootstrap 的双侧 p 值（H0: beta = 0，残差重加权）。"""
+    beta, _, _ = _ols_beta(x, y)
+    if not np.isfinite(beta):
+        return np.nan
+    # H0 下的残差：y 对常数回归的残差。
+    e0 = y - y.mean()
+    rng = np.random.default_rng(seed)
+    xc = x - x.mean()
+    denom = float(np.sum(xc**2))
+    count = 0
+    for _ in range(n_boot):
+        w = rng.choice([-1.0, 1.0], size=len(y))
+        yb = y.mean() + e0 * w
+        bb = float(np.sum(xc * (yb - yb.mean())) / denom)
+        if abs(bb) >= abs(beta):
+            count += 1
+    return (count + 1) / (n_boot + 1)
+
+
+def fit_category_beta_episode(
+    ep: pd.DataFrame,
+    returns: pd.DataFrame,
+    power: pd.DataFrame,
+    *,
+    train_end: str,
+) -> pd.DataFrame:
+    """episode 级影响系数（主口径）+ 支撑域与稳健性诊断。
+
+    Args:
+        ep: :func:`gates.episode_aggregate` 输出（``ev_date`` 即收益日）。
+        returns: ``[product, trade_date, r_cc]``。
+        power: episode 级功效表（ex-ante）。
+        train_end: 训练窗右端（``ev_date`` 严格早于该日的 episode 入训）。
+
+    Returns:
+        逐（主题, 品种）一行：``beta / t_ols / p_wild / n_episodes / n_markets /
+        sd_s / iqr_s / beta_x_iqr / beta_drop_top1 / beta_drop_top3 /
+        loo_beta_min / loo_beta_max / mode``。
+    """
+    rows: list[dict] = []
+    for rec in power.itertuples(index=False):
+        blk = ep.loc[(ep["theme"] == rec.theme) & (ep["product"] == rec.product)]
+        rmap = returns.loc[returns["product"] == rec.product].set_index(
+            "trade_date")["r_cc"]
+        blk = blk.assign(r_next=blk["ev_date"].map(rmap))
+        train = blk.loc[(blk["ev_date"] < train_end) & blk["r_next"].notna()]
+        out = {
+            "theme": rec.theme, "product": rec.product,
+            "n_episodes": int(len(train)),
+            "n_markets": int(train["n_markets"].sum()) if len(train) else 0,
+            "beta": np.nan, "t_ols": np.nan, "p_wild": np.nan,
+            "sd_s": np.nan, "iqr_s": np.nan, "beta_x_iqr": np.nan,
+            "beta_drop_top1": np.nan, "beta_drop_top3": np.nan,
+            "loo_beta_min": np.nan, "loo_beta_max": np.nan,
+            "mode": rec.decision,
+        }
+        if rec.decision == "category_beta" and len(train) >= 8:
+            x = train["surprise"].to_numpy(dtype="float64")
+            y = train["r_next"].to_numpy(dtype="float64")
+            beta, t_ols, _ = _ols_beta(x, y)
+            out.update(
+                beta=beta, t_ols=t_ols,
+                p_wild=wild_bootstrap_p(x, y),
+                sd_s=float(np.std(x, ddof=1)),
+                iqr_s=float(np.quantile(x, 0.75) - np.quantile(x, 0.25)),
+            )
+            out["beta_x_iqr"] = beta * out["iqr_s"]
+            order = np.argsort(-np.abs(x))
+            for k, key in ((1, "beta_drop_top1"), (3, "beta_drop_top3")):
+                if len(x) > k + 4:
+                    keep = np.ones(len(x), bool)
+                    keep[order[:k]] = False
+                    out[key] = _ols_beta(x[keep], y[keep])[0]
+            loo = [
+                _ols_beta(np.delete(x, i), np.delete(y, i))[0]
+                for i in range(len(x))
+            ]
+            out["loo_beta_min"] = float(np.nanmin(loo))
+            out["loo_beta_max"] = float(np.nanmax(loo))
+            if not np.isfinite(beta):
+                out["mode"] = "sign_only"
+        elif rec.decision == "category_beta":
+            out["mode"] = "sign_only"
+        rows.append(out)
+    return pd.DataFrame(rows)
+
+
 def fit_category_beta(
     surp: pd.DataFrame,
     returns: pd.DataFrame,

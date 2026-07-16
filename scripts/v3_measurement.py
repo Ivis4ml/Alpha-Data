@@ -73,6 +73,10 @@ ATOMIC_WINDOWS = ("night", "gap_pm", "gap_am", "day", "pre")
 WINDOW_START_UTC = "2026-01-04 16:00:00"
 WINDOW_END_UTC = "2026-07-13 16:00:00"
 
+#: 训练窗右端（北京 2026-05-15 00:00）。Layer 1 参数、期限乘子与展开统计的
+#: 全部估计只允许使用此前的 Polymarket 数据（point-in-time 协议，评审修订）。
+TRAIN_END_UTC = "2026-05-14 16:00:00"
+
 
 def beijing_to_epoch(ts: pd.Series) -> np.ndarray:
     """北京 tz-naive 时间戳 -> UTC 秒（NaT -> -1）。
@@ -240,6 +244,8 @@ def wide_theme_signals(
     out["s_night"] = piv["night"]
     night_flag = piv.index.get_level_values("product").map(has_night).to_numpy()
     out["s_gap"] = np.where(night_flag, piv["gap_pm"] + piv["gap_am"], piv["gap_pm"])
+    out["s_gap_pm"] = piv["gap_pm"]
+    out["s_gap_am"] = piv["gap_am"]
     out["s_day"] = piv["day"]
     out["s_pre"] = piv["pre"]
     n = theme_long.pivot_table(
@@ -323,14 +329,17 @@ def main() -> int:
     deadlines = deadline.dropna(subset=["deadline_ts"])[
         ["condition_id", "deadline_ts"]].copy()
 
-    # Layer 1：两轮滤波。
-    print("Layer 1 第一轮网格 MLE ...")
-    fit1 = latent.fit_filter(obs)
+    # Layer 1：参数与期限乘子只用训练窗估计（point-in-time），再对全样本
+    # 做因果滤波（Kalman 递推本身因果，前视只可能来自参数估计）。
+    train_end_ts = int(pd.Timestamp(TRAIN_END_UTC, tz="UTC").timestamp())
+    obs_train = obs.loc[obs["bucket_end"] < train_end_ts]
+    print(f"Layer 1 训练窗网格 MLE（{len(obs_train):,} / {len(obs):,} 桶）...")
+    fit1 = latent.fit_filter(obs_train)
     curve = latent.term_multiplier_curve(fit1.states, deadlines)
     print(curve.to_string(index=False))
     curve.to_parquet(OUT_DIR / "v3_term_curve.parquet", index=False)
 
-    # 乘子长表：逐观测桶按剩余天数取曲线值（缺期限 -> 1）。
+    # 乘子长表：逐观测桶按剩余天数取**训练窗曲线**值（缺期限 -> 1）。
     dl_map = deadlines.set_index("condition_id")["deadline_ts"]
     tau_days = (
         obs["condition_id"].map(dl_map) - obs["bucket_end"]
@@ -348,8 +357,14 @@ def main() -> int:
         {"condition_id": obs["condition_id"], "bucket_end": obs["bucket_end"],
          "mult": mult_vals}
     )
-    print("Layer 1 第二轮（带期限乘子）...")
-    fit = latent.fit_filter(obs, q_mult=q_mult)
+    print("Layer 1 训练窗第二轮（带期限乘子）...")
+    fit2 = latent.fit_filter(
+        obs_train, q_mult=q_mult.loc[obs["bucket_end"] < train_end_ts]
+    )
+    print("Layer 1 全样本因果滤波（参数冻结）...")
+    fit = latent.apply_filter(obs, fit2.params, q_mult=q_mult)
+    n_fb = int(fit.params["fallback"].sum())
+    print(f"  训练窗后诞生、回退中位参数的市场：{n_fb} / {len(fit.params)}")
     fit.params.to_parquet(OUT_DIR / "v3_filter_params.parquet", index=False)
 
     # 内部验证 H1-lite：创新方差 vs 桶间差分方差。
@@ -509,10 +524,33 @@ def main() -> int:
     else:
         print("警告：价格分布特征为空，跳过主题聚合")
 
-    # 平台公共因子（逐网格）与正交化。
+    # 平台公共因子（逐网格）与 LOFO 正交化。
+    # 评审修订：某主题正交化所用的公共因子必须剔除该主题自身的族
+    # （leave-one-family-out），否则会机械地从信号中减掉自身的一部分。
+    # 全族全局因子仍单独输出，作 Layer 5 的控制变量（控制变量含自身无碍）。
     plat_pairs = pd.DataFrame(
         {"condition_id": plat["condition_id"], "product": "PLATFORM"}
     )
+    orth_cols = ("s_night", "s_gap", "s_gap_pm", "s_gap_am", "s_day", "s_pre")
+    fam_w_plat = (
+        plat.merge(plat_fam[["condition_id", "family_key"]], on="condition_id")
+        .groupby("family_key")["usdc_win"].sum().pipe(np.sqrt)
+    )
+    theme_fams = {
+        th: set(fam_cn.loc[fam_cn["theme"] == th, "family_key"])
+        for th in registry["theme"].unique()
+    }
+
+    def factor_long(fs: pd.DataFrame, weights: pd.Series) -> pd.DataFrame:
+        fac = story.common_factor(fs, weights)
+        fpiv = fac.pivot_table(index="trade_date", columns="window",
+                               values="f_pm")
+        if "gap_am" in fpiv.columns and "gap_pm" in fpiv.columns:
+            fpiv["gap"] = fpiv["gap_pm"] + fpiv["gap_am"]
+        elif "gap_pm" in fpiv.columns:
+            fpiv["gap"] = fpiv["gap_pm"]
+        return fpiv
+
     factor_frames = []
     theme_orth_frames = []
     for g in grids:
@@ -520,39 +558,39 @@ def main() -> int:
             proj, plat_pairs, {g: grids[g]}, {"PLATFORM": g},
             resolved_ts_map, z_col="z",
         )
-        plat_sig = plat_sig.rename(columns={"s": "s"})
         fam_series = story.family_series(
             plat_sig[["condition_id", "trade_date", "window", "s"]],
             plat_fam.merge(plat[["condition_id", "usdc_win"]], on="condition_id")[
                 ["condition_id", "family_key", "usdc_win"]],
         )
-        fam_w_plat = (
-            plat.merge(plat_fam[["condition_id", "family_key"]], on="condition_id")
-            .groupby("family_key")["usdc_win"].sum().pipe(np.sqrt)
-        )
-        factor = story.common_factor(fam_series, fam_w_plat)
-        factor["grid"] = g
-        factor_frames.append(factor)
+        fpiv_global = factor_long(fam_series, fam_w_plat)
+        fac_global = fpiv_global.reset_index().melt(
+            id_vars="trade_date", var_name="window", value_name="f_pm")
+        fac_global["grid"] = g
+        factor_frames.append(fac_global)
 
         prods = [p for p, gg in grid_of_product.items() if gg == g]
-        sub_theme = theme.loc[theme["product"].isin(prods)]
-        # gap 窗口因子 = gap_pm 与 gap_am 因子之和（与信号可加性一致）。
-        fpiv = factor.pivot_table(index="trade_date", columns="window",
-                                  values="f_pm")
-        if "gap_am" in fpiv.columns:
-            fpiv["gap"] = fpiv["gap_pm"] + fpiv["gap_am"]
-        else:
-            fpiv["gap"] = fpiv.get("gap_pm")
-        flong = fpiv.reset_index().melt(
-            id_vars="trade_date", var_name="window", value_name="f_pm")
-        orth = story.orthogonalize(
-            sub_theme, flong, cols=("s_night", "s_gap", "s_day", "s_pre"))
-        # 附品种网格的因子列（pre 窗口）供 Layer 5 控制。
-        orth = orth.merge(
-            fpiv[["pre"]].rename(columns={"pre": "f_pm_pre"}).reset_index(),
-            on="trade_date", how="left",
-        )
-        theme_orth_frames.append(orth)
+        for th in sorted(set(theme.loc[theme["product"].isin(prods), "theme"])):
+            sub_theme = theme.loc[
+                theme["product"].isin(prods) & (theme["theme"] == th)]
+            excl = theme_fams.get(th, set())
+            fs_lofo = fam_series.loc[~fam_series["family_key"].isin(excl)]
+            fpiv_lofo = factor_long(fs_lofo, fam_w_plat.drop(
+                index=[k for k in excl if k in fam_w_plat.index]))
+            flong = fpiv_lofo.reset_index().melt(
+                id_vars="trade_date", var_name="window", value_name="f_pm")
+            orth = story.orthogonalize(sub_theme, flong, cols=orth_cols)
+            # 附全局因子列（Layer 5 控制用；pre / gap_pm / gap_am / night）。
+            attach = {"pre": "f_pm_pre", "gap_pm": "f_pm_gap_pm",
+                      "gap_am": "f_pm_gap_am", "night": "f_pm_night"}
+            cols_avail = {k: v for k, v in attach.items()
+                          if k in fpiv_global.columns}
+            orth = orth.merge(
+                fpiv_global[list(cols_avail)].rename(columns=cols_avail)
+                .reset_index(),
+                on="trade_date", how="left",
+            )
+            theme_orth_frames.append(orth)
     factor_all = pd.concat(factor_frames, ignore_index=True)
     factor_all.to_parquet(OUT_DIR / "v3_factor.parquet", index=False)
     theme_final = pd.concat(theme_orth_frames, ignore_index=True)

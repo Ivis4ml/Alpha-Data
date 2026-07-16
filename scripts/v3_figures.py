@@ -61,7 +61,7 @@ def fig_term() -> None:
 
 
 def fig_power() -> None:
-    power = pd.read_parquet(V3_DIR / "v3_power_table.parquet")
+    power = pd.read_parquet(V3_DIR / "v3_power_table_expost.parquet")
     power = power.sort_values("mde")
     lab = power["theme"] + "×" + power["product"]
     fig, ax = plt.subplots(figsize=(5.2, 3.4))
@@ -134,6 +134,29 @@ def fig_absorption() -> None:
     plt.close(fig)
 
 
+def fig_episode() -> None:
+    """episode 聚类诊断：市场级伪重复与 episode 级支撑域（mideast×SC）。"""
+    ep = pd.read_parquet(V3_DIR / "v3_episodes.parquet")
+    sub = ep.loc[(ep["theme"] == "mideast_conflict") & (ep["product"] == "SC")]
+    fig, axes = plt.subplots(1, 2, figsize=(6.4, 2.9))
+    ax = axes[0]
+    ax.bar(range(len(sub)), sub.sort_values("n_markets", ascending=False)
+           ["n_markets"], color=P["blue"], width=0.85)
+    ax.set_xlabel("episode（按共享市场数降序）")
+    ax.set_ylabel("共享同一收益日的市场数")
+    pub_style.soft_grid(ax)
+    pub_style.panel(ax, "a")
+    ax = axes[1]
+    ax.hist(sub["surprise"], bins=30, color=P["aqua"])
+    ax.set_xlabel("episode 级 surprise（族内均值）")
+    ax.set_ylabel("频数")
+    pub_style.soft_grid(ax)
+    pub_style.panel(ax, "b")
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "f_v3_episode.png", dpi=300)
+    plt.close(fig)
+
+
 def main() -> int:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     pub_style.setup(cn_font=True)
@@ -141,6 +164,7 @@ def main() -> int:
     fig_power()
     fig_oos()
     fig_absorption()
+    fig_episode()
     print(f"图已写入 {FIG_DIR}")
     return 0
 

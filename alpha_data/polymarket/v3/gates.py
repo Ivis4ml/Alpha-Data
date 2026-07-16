@@ -10,12 +10,21 @@
     SE(beta)  约等于 sigma_R / sqrt(sum (s_i - s_bar)^2 / DE)
     MDE       = (z_{1-alpha/2} + z_{1-gamma}) * SE
 
-设计效应 ``DE = 1 + (m_bar - 1) * rho``：同族同周结算的事件视为一个聚类
-（重叠信息窗口），``rho`` 预注册取 0.5（保守）。
+**episode 聚类（v3.1 修订）**：同一现实事件常让整族日期阶梯同时结算——
+实测 mideast×SC 的 191 个"市场事件"只对应 97 个收益日，单日最多 25 个市场
+共享同一个次日收益。市场级行不是独立样本；真正的样本单位是**下一可交易日**
+（episode）。主口径把 surprise 按 (品种, 下一可交易日) 聚合为 episode 级
+（同日收益完全相同 = 聚类内相关为 1，聚合等价于最保守的处理），MDE 直接在
+episode 设计上核算。family × ISO 周 + rho=0.5 的旧口径保留作对比
+（:func:`power_table`，已知偏乐观）。
 
 预注册经济效应上限 ``delta_econ``：单位 surprise（概率 0 -> 1）对应的收益效应
 不超过品种日收益率标准差的 2 倍。``MDE > delta_econ`` 时按框架 §9.4 降级：
 ``category beta -> sign-only -> 关闭``。
+
+**ex-ante / ex-post 分离**：决定 OOS 管道用 ``category_beta`` 还是 ``sign-only``
+的门控只能使用训练截止前已结算的事件（ex-ante）；全样本版本（ex-post）仅
+回答"以当前数据量哪些参数可研究"，不得反向改变模型选择。
 """
 
 from __future__ import annotations
@@ -67,6 +76,87 @@ def surprises(
     df["cluster"] = df["family_key"].fillna(df["condition_id"]) + ":" + week
     return df[["condition_id", "theme", "product", "family_key", "resolved_at",
                "q_pre", "y", "surprise", "cluster"]]
+
+
+def attach_event_date(surp: pd.DataFrame, trading_days: list[str]) -> pd.DataFrame:
+    """给 surprise 表附加**下一可交易日** ``ev_date``（episode 键）。
+
+    北京时间 09:00 前结算的事件，其收益窗为当日；其后为次一交易日。周末 /
+    假日结算自动归并到下一交易日——这正是"多个市场共享同一收益观测"的
+    聚类结构。
+    """
+    days = np.array(sorted(trading_days))
+    cn = pd.to_datetime(surp["resolved_at"], utc=True).dt.tz_convert("Asia/Shanghai")
+    cutoff = np.where(
+        cn.dt.hour < 9,
+        cn.dt.strftime("%Y-%m-%d"),
+        (cn + pd.Timedelta(days=1)).dt.strftime("%Y-%m-%d"),
+    )
+    idx = np.searchsorted(days, cutoff, side="left")
+    out = surp.copy()
+    ev = np.full(len(surp), None, dtype=object)
+    ok = idx < len(days)
+    ev[ok] = days[idx[ok]]
+    out["ev_date"] = ev
+    return out.dropna(subset=["ev_date"])
+
+
+def episode_aggregate(surp: pd.DataFrame, *, agg: str = "mean") -> pd.DataFrame:
+    """市场级 surprise -> episode（品种 × 下一可交易日）级。
+
+    Args:
+        surp: :func:`attach_event_date` 输出。
+        agg: ``mean``（episode 内均值，主口径）或 ``sum``（可加冲击假设，
+            稳健性口径）。
+
+    Returns:
+        ``[theme, product, ev_date, surprise, n_markets]``。
+    """
+    fn = "mean" if agg == "mean" else "sum"
+    g = surp.groupby(["theme", "product", "ev_date"])
+    out = g.agg(surprise=("surprise", fn), n_markets=("surprise", "size"))
+    return out.reset_index()
+
+
+def power_table_episode(
+    surp_ev: pd.DataFrame,
+    sigma_r: pd.Series,
+    *,
+    alpha: float = ALPHA,
+    power: float = POWER,
+    k_econ: float = K_ECON,
+    agg: str = "mean",
+) -> pd.DataFrame:
+    """episode 级功效表（主口径；聚合后各行的收益观测相互独立）。
+
+    Returns:
+        ``[theme, product, n_markets, n_episodes, sum_s2, mde, delta_econ,
+        decision]``。
+    """
+    ep = episode_aggregate(surp_ev, agg=agg)
+    z_a = stats.norm.ppf(1.0 - alpha / 2.0)
+    z_g = stats.norm.ppf(power)
+    rows: list[dict] = []
+    for (theme, product), blk in ep.groupby(["theme", "product"]):
+        s = blk["surprise"].to_numpy(dtype="float64")
+        n_ep = len(s)
+        sum_s2 = float(np.sum((s - s.mean()) ** 2))
+        sig = float(sigma_r.get(product, np.nan))
+        if n_ep >= 3 and sum_s2 > 0 and np.isfinite(sig):
+            mde = (z_a + z_g) * sig / np.sqrt(sum_s2)
+        else:
+            mde = np.inf
+        delta = k_econ * sig if np.isfinite(sig) else np.nan
+        rows.append(
+            {
+                "theme": theme, "product": product,
+                "n_markets": int(blk["n_markets"].sum()),
+                "n_episodes": n_ep, "sum_s2": sum_s2,
+                "mde": mde, "delta_econ": delta,
+                "decision": "category_beta" if mde <= delta else "sign_only",
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["product", "theme"]).reset_index(drop=True)
 
 
 def power_table(

@@ -256,3 +256,76 @@ class TestEpoch:
         out = beijing_to_epoch(ts)
         expect = int(pd.Timestamp("2026-01-04 16:00:00", tz="UTC").timestamp())
         assert out[0] == expect
+
+
+class TestPointInTime:
+    def test_apply_filter_与同参数fit一致(self):
+        rng = np.random.default_rng(3)
+        T = 200
+        y = np.cumsum(rng.normal(0, 0.1, T)) + rng.normal(0, 0.3, T)
+        obs = pd.DataFrame(
+            {
+                "condition_id": "m", "bucket_end": np.arange(T) * 900 + 900,
+                "y": y, "n_trades": 5.0, "usdc": 100.0, "spread": 0.1,
+                "last_ts": np.arange(T) * 900 + 890,
+            }
+        )
+        fit = latent.fit_filter(obs)
+        applied = latent.apply_filter(obs, fit.params)
+        assert np.allclose(
+            fit.states["z"].to_numpy(), applied.states["z"].to_numpy())
+
+    def test_训练外市场回退中位参数(self):
+        obs = pd.DataFrame(
+            {
+                "condition_id": ["new"] * 30,
+                "bucket_end": np.arange(30) * 900 + 900,
+                "y": 0.1, "n_trades": 5.0, "usdc": 100.0, "spread": 0.1,
+                "last_ts": np.arange(30) * 900 + 890,
+            }
+        )
+        params = pd.DataFrame(
+            {"condition_id": ["a", "b"], "q": [0.01, 0.03], "r0": [0.02, 0.06]})
+        out = latent.apply_filter(obs, params)
+        assert bool(out.params["fallback"].iloc[0])
+        assert abs(out.params["q"].iloc[0] - 0.02) < 1e-12  # 中位数
+
+
+class TestEpisode:
+    def _surp(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "condition_id": ["m1", "m2", "m3"],
+                "theme": "t", "product": "P", "family_key": ["f1", "f1", "f2"],
+                # m1 周六结算、m2 周日结算 -> 同归并到周一；m3 周二 08:00 前 -> 周二
+                "resolved_at": pd.to_datetime(
+                    ["2026-03-07 12:00", "2026-03-08 03:00", "2026-03-10 00:30"],
+                    utc=True),
+                "q_pre": 0.5, "y": 1, "surprise": [0.4, 0.6, 0.2],
+                "cluster": ["c1", "c2", "c3"],
+            }
+        )
+
+    def test_事件日归并(self):
+        days = ["2026-03-06", "2026-03-09", "2026-03-10"]
+        ev = gates.attach_event_date(self._surp(), days)
+        assert list(ev["ev_date"]) == ["2026-03-09", "2026-03-09", "2026-03-10"]
+        ep = gates.episode_aggregate(ev)
+        assert len(ep) == 2  # 周末两个市场并成一个 episode
+        row = ep.loc[ep["ev_date"] == "2026-03-09"].iloc[0]
+        assert row["n_markets"] == 2
+        assert abs(row["surprise"] - 0.5) < 1e-12  # 均值聚合
+
+    def test_wild_bootstrap_零效应不显著(self):
+        rng = np.random.default_rng(5)
+        x = rng.normal(0, 1, 60)
+        y = rng.normal(0, 1, 60)  # 与 x 无关
+        p = impact.wild_bootstrap_p(x, y, n_boot=499)
+        assert p > 0.05
+
+    def test_wild_bootstrap_强效应显著(self):
+        rng = np.random.default_rng(6)
+        x = rng.normal(0, 1, 60)
+        y = 0.8 * x + rng.normal(0, 0.3, 60)
+        p = impact.wild_bootstrap_p(x, y, n_boot=499)
+        assert p < 0.01
