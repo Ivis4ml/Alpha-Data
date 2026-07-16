@@ -98,11 +98,18 @@ def fig_oos() -> None:
         if col not in oos.columns:
             continue
         ax.bar(x + dx, oos[col] * 100, w, label=lab, color=c)
+        # Clark-West 是单侧检验：正 t 支持扩展模型（†），负 t 是显著恶化（↓），
+        # 二者不能共用同一显著记号（评审第 7 点）。
         for i, row in oos.iterrows():
             t = row.get(f"cw_t_{m}")
-            if np.isfinite(t) and abs(t) >= 1.645:
-                ax.text(x[i] + dx, row[col] * 100, "*", ha="center",
-                        fontsize=10, color=P["ink"])
+            if not np.isfinite(t):
+                continue
+            if t >= 1.645:
+                ax.text(x[i] + dx, max(row[col], 0) * 100 + 0.6, "▲",
+                        ha="center", fontsize=6, color=P["green"])
+            elif t <= -1.645:
+                ax.text(x[i] + dx, max(row[col], 0) * 100 + 0.6, "▼",
+                        ha="center", fontsize=6, color=P["red"])
     ax.axhline(0, color=P["ink"], lw=0.7)
     ax.set_xticks(x, oos["product"])
     ax.set_ylabel("OOS 增量 $R^2$ 相对 M0（%）")

@@ -339,7 +339,7 @@ def build() -> str:
 <style>{STYLE}</style>
 <main>
 <div class="eyebrow">Alpha-Data 研究报告 · feat/cn-futures-polymarket ·
-2026-07-16（v2，含第二部分）</div>
+2026-07-16（v2.1：第一部分 v1.1 + 第二部分 v3.1 评审修订版）</div>
 <h1>Polymarket 事件概率与中国商品期货：<br>跨市场传导、时段吸收与升水回归</h1>
 
 <div class="abstract"><b class="hd">摘要</b>　本文研究去中心化预测市场 Polymarket 的
