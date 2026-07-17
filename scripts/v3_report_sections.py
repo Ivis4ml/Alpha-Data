@@ -211,6 +211,10 @@ def h4_table_html() -> str:
 
 def build_part2(tex: Callable[[str], str], fig_tag: Callable[[str, str], str]) -> str:
     """第二部分（第 14-18 节）HTML。"""
+    import v3_supp_sections
+    SUPP_V3_STATS = v3_supp_sections.sec_v3_stats()
+    SUPP_ABSORB_SUB = v3_supp_sections.sec_absorb_subsample()
+    SUPP_TENSION_EP = v3_supp_sections.sec_tension_episode()
     val = json.loads((V3 / "v3_validation.json").read_text())
     h1r = val["h1_lite"]["ratio"]
     h2n = val["h2_lite"]["n_violations"]
@@ -287,8 +291,10 @@ Polymarket 旧交易所合约在该日 11:00:40 UTC（区块 86,126,998）产生
 <p>迁移重叠期 v2 占比不足 0.04%（用户实际迁移发生在 4 月 28 日切换时刻），
 HF 段在其覆盖范围内实质完整，拼接成立。边界日交叉核对：两段共有市场 1,403
 个，HF 末笔与扩展段首笔的概率中位差 0.02。</p>
-<p>拼接后与期货库（至 07-13）的重叠达 <b>127 个交易日</b>（第一部分 75 个），
-且样本不再由美伊冲突单独主导。同一套事前注册规则（v1.1 的 slug 模式与排除词
+<p>拼接后统一 tape 覆盖 127 个国内交易日（信号侧至 07-15），与期货库
+（至 07-13）的<b>重叠为 125 个交易日</b>（第一部分 75 个；此前"127"的表述
+混用了两个分母，已统一），且样本不再由美伊冲突单独主导——冲突段内外的
+硬分段证据见 §17.5。同一套事前注册规则（v1.1 的 slug 模式与排除词
 原样不动）自动命中扩展期的新市场：</p>
 {registry_growth_table_html()}
 <p>扩展期新市场没有作者派生的 <code>category_refined</code> 列（对 NULL 类别
@@ -299,7 +305,10 @@ HF 段在其覆盖范围内实质完整，拼接成立。边界日交叉核对�
 <h3>14.2 结算事件：Power Gate 的数据前提</h3>
 <p>功效核算需要每个事件的三元组（结算时刻，事前概率，实现结果）。这里遇到
 本轮最大的数据缺口：<b>HF 数据集的 <code>resolved_at</code> 元数据只覆盖
-登记市场的 56/425</b>。解决办法仍是链上：ConditionTokens 合约的
+登记市场的 56/425</b>（分母定义：492 个 v3 登记市场中 425 个在 HF 段
+（≤04-28）内已有成交；56 为其中带 HF 元数据 resolved_at 者；第一部分的
+388 为 v1.1 规则在 HF 段的命中数，三个分母口径不同，此处统一交代）。
+解决办法仍是链上：ConditionTokens 合约的
 <code>ConditionResolution</code> 事件不可篡改地记录每次结算，补爬两段
 （2025-12 至 04-28 区间 790,799 行、04-28 之后 880,309 行；事件本身无时间戳
 列，区块时刻用成交事件的（区块, 时间）对做最近邻回填，误差秒级）。结算时刻
@@ -361,6 +370,8 @@ HF 段在其覆盖范围内实质完整，拼接成立。边界日交叉核对�
 {T[5]}
 <div class="texnote">系数 b 只用严格早于当期的观测（展开窗口，无前视）。
 全族全局因子仍单独输出，仅作 Layer 5 控制变量（控制变量含自身无碍）。</div>
+
+{SUPP_V3_STATS}
 
 <h2 id="s16">16　双门控与影响层：一次真实的证伪</h2>
 
@@ -424,6 +435,12 @@ ex-ante 与 ex-post 两套门控一致拦截，Layer 4 整体降级 sign-only。
 个训练观测。多重检验：跨 8 品种 BH-FDR、逐品种循环块自助（块长 10）、
 前后半段一致性。</div>
 
+<p><b>品种集合说明（审计补）</b>：第二部分固定 8 品种（AG/AU/CF/CU/I/IF/
+M/SC）——入选标准是"有直连或近缘 ETF 代理可作控制"。第一部分 §12.7-12.8
+的探索性头部结果之一 mideast×IM（控制后 t=2.15-2.62）未入本框架，原因是
+IM（中证 1000 股指）无直连 ETF 代理、控制集不可比；该线索的复核列入
+§18.1 待办。</p>
+
 <h3>17.2 结果：M 是候选发现；v3 降噪为方向性改善</h3>
 {oos_table_html()}
 {fig_tag("v3/f_v3_oos.png",
@@ -469,6 +486,18 @@ t = 3.79、v3 信号 <b>t = 4.94</b>（n = 114，第一部分为 3.68 @ n = 68�
 对 point-in-time、LOFO、episode 修订全部稳健。反例照旧如实报告：
 metal×AU 控制 GLD 后 v3（2.04）弱于基线（6.44），投影可能平滑掉了 GLD
 之外的边际信息，待更长样本判别。</p>
+<p><b>与第一部分结论二的显式调和（审计补）</b>：扩展样本复核下
+oil_price×SC·gap 控制 USO 后 t = 3.68（基线与 v3 一致）——与第一部分
+75 天样本的"死亡"（4.89→1.88）相反，价格类在扩展样本的 gap 窗<b>重新
+显著</b>。因此第一部分"价格类无增量"（H1 依据）限定于原 75 天样本与
+夜盘窗；§16.1 以 H1 为实证依据禁价格阈值族入影响层的资格规则，在扩展
+样本下应重审。第一部分 §11.2 与结论二已同步加注。metal×AG·night 的
+边际幸存（第一部分 t=2.66）在本复核中消失（t=0.72），两部分的完整对照
+以本节为准。</p>
+
+{SUPP_ABSORB_SUB}
+
+{SUPP_TENSION_EP}
 
 <h3>17.4 H4：tension-波动的负相关不是活动度代理</h3>
 <p>评审第 10 点给出了直接的判别设计：若 tension 只是"没人交易"的代理，
@@ -476,12 +505,15 @@ metal×AU 控制 GLD 后 v3（2.04）弱于基线（6.44），投影可能平滑
 {h4_table_html()}
 <p>SC 的 t 从 -4.40 到<b>加控制后仍为 -4.40</b>，两个活动度变量自身均不显著
 ——最简单的注意力代理解释被排除；CU 在控制规格下也为负（-2.84）；AG 的
-正号在控制后消失。机制仍属探索（下一个判别：把失衡按"来自高成交 vs 无成交
+正号在控制后消失。表中 CF/CU/I/M 四行的基线列为"—"：基线规格（无控制的
+单变量 tension 回归）只在 v1.1 的三个原品种（SC/AU/AG）上估计过，扩展
+品种直接进入含控制的规格，非样本不足（审计补注）。
+机制仍属探索（下一个判别：把失衡按"来自高成交 vs 无成交
 市场"拆开），但这个负相关已经历一轮否证尝试而幸存。</p>
 
 <h2 id="s18">18　第二部分结论（v3.1）</h2>
 <div class="finding"><span class="no">一</span><b>样本扩展后第一部分的头部结论
-全部保持并增强。</b>吸收结构在 127 个交易日上复现；mideast×SC 控制 USO 代理
+全部保持并增强。</b>吸收结构在 125 个重叠交易日上复现；mideast×SC 控制 USO 代理
 后的增量从 t=3.68（n=68）升到 t=4.94（n=114），且对全部六项评审修复稳健。
 限定：控制集是 ETF 代理，非 24 小时境外期货与 USDCNH。</div>
 <div class="finding"><span class="no">二</span><b>影响系数在当前样本下不可
@@ -509,9 +541,13 @@ MDE 超限（最近差 38%）。功效门控从"装饰"变成了实际拦截了�
 库内 CNH ETF 已退市）；接入真实境外期货是解除吸收与 M 结论限定的唯一途径。</li>
 <li>episode 按下一可交易日归并；更细的"同一现实事件跨多日轮次"人工标注会
 进一步收缩有效样本，当前口径仍可能偏乐观。</li>
-<li>主题聚合权重沿用全窗口流动性（静态，继承 v1.1）。</li>
+<li>主题聚合权重沿用全窗口流动性（静态，继承 v1.1；第三部分已改时点化
+累计权重——在 v3 管道加同款变体重跑吸收复核与 M 的 OOS 行，列为下一步）。</li>
 <li>下一步：(a) 爬虫日常增量，ex-post 功效表按月复核；(b) 境外期货与
-USDCNH 数据源接入；(c) tension 机制专项（按成交结构拆分失衡来源）。</li>
+USDCNH 数据源接入；(c) tension 机制专项（按成交结构拆分失衡来源，§17.6
+的门控试验是其起点）；(d) OOS 门控变体——"凌晨信号 × 夜盘未兑现"的条件
+组合（第一部分 §12.9 W11 的 OOS 版）在 ex-ante 门控框架内预注册评估一次；
+(e) mideast×IM 线索按可比控制集复核。</li>
 </ul>
 """
 
@@ -570,4 +606,59 @@ Markdown 版结果文档（v3.1）</td></tr>
 （族解析 / PAVA / hazard / 滤波 / 无前视 / episode 聚类 / wild bootstrap /
 MDE / 对齐 / 时间换算）</td></tr>
 </table></div>
-"""
+<h3>C.2 第一、二部分产物字段词典（审计补）</h3>
+""" + _field_dict_html()
+
+
+def _field_dict_html() -> str:
+    """第一、二部分核心产物的字段级词典。"""
+    tables = [
+        ("theme_signals.parquet（第一部分主信号表）", [
+            ("theme / product / trade_date", "主题、品种、交易日"),
+            ("s_night / s_gap / s_day", "三窗口 logit 信念创新（方向统一、"
+             "√usdc 加权聚合；品种间同值复制）"),
+            ("n_active", "该日参与聚合的活跃市场数"),
+            ("usdc_night / _gap / _day", "各窗口市场成交额合计（美元）"),
+        ]),
+        ("market_signals.parquet（市场级窗口信号）", [
+            ("condition_id", "市场链上标识（聚合前粒度）"),
+            ("s_* / usdc_* / flow_* / n_*", "逐市场三窗口信号、成交额、"
+             "带方向资金流与笔数"),
+            ("p_day_open / p_age_day_open", "09:00 端点价与其距最后成交的"
+             "分钟数（>120 记缺失）"),
+        ]),
+        ("corr_table.parquet（第一部分检验总表）", [
+            ("kind", "contemporaneous（同期吸收）/ predictive（预测）"),
+            ("signal / ret", "信号列与收益列配对"),
+            ("pearson / spearman / beta / t_hac / p_hac", "相关、回归系数与 "
+             "Newey-West 推断"),
+            ("bp_per_sd", "信号 1σ 对应收益（bp）"),
+            ("q_bh / small_sample", "预测族 BH-FDR q 值；n<40 小样本标记"),
+        ]),
+        ("v3_theme_signals.parquet（第二部分测量层）", [
+            ("s_*", "滤波 + 一致性投影后的窗口信念创新（coherent）"),
+            ("s_*_rawz", "未投影的标准化创新（对照）"),
+            ("tension", "族内逻辑一致性张力（投影修复幅度）"),
+            ("hz_* / px_*", "结算 hazard 变化；价格阈值族隐含分布特征"),
+            ("f_pm_*", "LOFO 平台公共因子（逐窗口）"),
+        ]),
+        ("v3_episodes.parquet（episode 层）", [
+            ("theme / product / ev_date", "样本单位：（主题×品种×下一"
+             "可交易日）"),
+            ("surprise", "结算 surprise（事前概率 vs 实现结果）"),
+            ("n_markets", "该 episode 折叠的市场事件数（伪重复核算分母）"),
+        ]),
+        ("v3_power_table*.parquet（功效表）", [
+            ("mde", "最小可检测效应（80% 功效）"),
+            ("passed", "功效门控是否放行；ex-ante 用历史方差、ex-post 用"
+             "实现方差"),
+        ]),
+    ]
+    blocks = []
+    for name, fields in tables:
+        rows = "".join(f"<tr><td><code>{f}</code></td><td>{d}</td></tr>"
+                       for f, d in fields)
+        blocks.append(f"<p><b>{name}</b></p>"
+                      f'<div class="tablewrap"><table class="wraptext">'
+                      f"<tr><th>字段</th><th>含义</th></tr>{rows}</table></div>")
+    return "\n".join(blocks)

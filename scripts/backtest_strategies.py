@@ -152,13 +152,22 @@ def build_event_strategy() -> pd.Series:
         first_ts = (pd.Timestamp(rec.first_ts, unit="s", tz="UTC")
                     .tz_convert("Asia/Shanghai").tz_localize(None))
         pos = base_idx.searchsorted(first_ts)
-        if pos <= 0 or pos >= len(base_idx) - 25:
+        if pos <= 0 or pos >= len(base_idx) - 1:
             continue
-        if (base_idx[min(pos + 24, len(base_idx) - 1)]
-                - base_idx[pos]) > pd.Timedelta(minutes=130):
-            continue  # 事件不在夜盘内或持有期跨会话
-        ret = float((cum.iloc[pos + 24] - cum.iloc[pos - 1]) * rec.orientation)
-        pnl_rows.append({"trade_date": td_map.iloc[pos], "ret": ret})
+        # 进场 = 事件所在 bar 的收盘（事件信息已知后的第一个可成交价，
+        # 修正 v1.1 在事件前一分钟定价进场的前视缺陷）；持有 120 根 1 分钟
+        # bar（原实现为 25 根却按 120 分钟宣称），夜盘剩余不足则持有至该夜
+        # 收盘。
+        end = min(pos + 120, len(base_idx) - 1)
+        span = base_idx[pos:end + 1].to_series()
+        breaks = span.diff() > pd.Timedelta(minutes=2)
+        if breaks.any():
+            end = pos + int(np.argmax(breaks.to_numpy())) - 1
+        if end <= pos:
+            continue
+        ret = float((cum.iloc[end] - cum.iloc[pos]) * rec.orientation)
+        pnl_rows.append({"trade_date": td_map.iloc[pos], "ret": ret,
+                         "hold_min": int(end - pos)})
     ev = pd.DataFrame(pnl_rows)
     daily = ev.groupby("trade_date")["ret"].sum()
     print(f"S5 事件数 {len(ev)}，覆盖 {daily.shape[0]} 个交易日")
@@ -177,15 +186,41 @@ def main() -> int:
     mask = ret_df.index <= SIGNAL_END
     ret_df, pos_df = ret_df[mask], pos_df[mask]
 
-    # ---- 指标表（无成本 / 4bp 单边）----
+    # ---- 指标表（成本敏感性 0/2/4/8/12bp 单边）----
     rows = []
     for col in ret_df.columns:
-        for cost in (0.0, COST_BP):
+        for cost in (0.0, 2.0, COST_BP, 8.0, 12.0):
             m = metrics(ret_df[col], pos_df[col], cost_bp=cost)
             rows.append({"strategy": col, "cost_bp": cost, **m})
     tab = pd.DataFrame(rows)
     tab.to_parquet(DEEP_DIR / "backtest_metrics.parquet", index=False)
     print(tab.round(2).to_string(index=False))
+
+    # ---- 交易属性表：换手、进出次数与参与率（容量代理）----
+    sc = fut_store.read_daily("SC")
+    sc = sc[sc["trade_date"] <= SIGNAL_END]
+    adv = float(sc["day_money"].mean())          # 日均成交额（元）
+    aoi_val = float((sc["day_oi"] * sc["day_close"]).mean())  # 持仓名义额
+    attr_rows = []
+    for col in ret_df.columns:
+        p = pos_df[col].fillna(0.0)
+        turn = p.diff().abs().fillna(p.abs())
+        total_turn = float(turn.sum())
+        n_entries = int(((p != 0) & (p.shift(1).fillna(0.0) == 0)).sum())
+        active = int((p != 0).sum())
+        attr_rows.append({
+            "strategy": col,
+            "total_turnover": total_turn,
+            "ann_turnover": total_turn / len(p) * ANN,
+            "n_entries": n_entries,
+            "avg_holding_days": active / max(n_entries, 1),
+            "participation_100m_pct": 1e8 / adv * 100,
+            "participation_oi_100m_pct": 1e8 / aoi_val * 100,
+        })
+    attr = pd.DataFrame(attr_rows)
+    attr.to_parquet(DEEP_DIR / "backtest_trade_attrs.parquet", index=False)
+    print(attr.round(3).to_string(index=False))
+    print(f"SC 日均成交额 {adv / 1e8:.1f} 亿元，持仓名义 {aoi_val / 1e8:.1f} 亿元")
 
     # ---- 固定杠杆扫描（示例取 Sharpe 最高的策略）----
     best = (tab[tab.cost_bp == COST_BP].sort_values("sharpe", ascending=False)
@@ -223,7 +258,9 @@ def main() -> int:
     sigma_target = float(d["rv"].median())
     lev_t = (sigma_target / sigma_hat).clip(upper=3.0)
 
-    base_col = "S1_day_oil"
+    # 与 §12.6 正文一致：目标波动杠杆演示应用于净 Sharpe 最高的 S3_rev_oil
+    # （样本内择优，报告文字已声明）。
+    base_col = "S3_rev_oil"
     lev_series = lev_t.reindex(ret_df.index).fillna(1.0)
     vt_ret = ret_df[base_col] * lev_series
     vt_pos = pos_df[base_col] * lev_series
