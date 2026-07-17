@@ -137,6 +137,61 @@ SIGNAL_DEFS: list[tuple[str, str, str, str]] = [
 ]
 
 
+def _short(addr: str) -> str:
+    return f"{addr[:6]}…{addr[-4:]}"
+
+
+def example_section() -> str:
+    """真实数据示例：一笔吃掉三档的订单（原始链上行 -> 清洗后分析行）。"""
+    raw_p = D / "example_tx_raw.parquet"
+    if not raw_p.exists():
+        return ""
+    raw = pd.read_parquet(raw_p)
+    clean = pd.read_parquet(D / "example_tx_clean.parquet")
+    slug = raw["market_slug"].iloc[0]
+    ts = pd.to_datetime(int(raw["block_timestamp"].iloc[0]), unit="s")
+    head1 = ("<tr><th>id（链_区块_日志序号）</th><th>maker</th><th>taker</th>"
+             "<th>taker 方向</th><th>价格</th><th>份额</th><th>USDC</th>"
+             "<th>中继腿?</th></tr>")
+    rows1 = []
+    for r in raw.sort_values("log_index").itertuples(index=False):
+        cls = ' class="die"' if r.is_relay else ""
+        tag = "<b>是（剔除）</b>" if r.is_relay else "否（保留）"
+        rows1.append(
+            f"<tr{cls}><td><code>{r.id}</code></td><td>{_short(r.maker)}</td>"
+            f"<td>{_short(r.taker)}</td><td>{r.taker_direction}</td>"
+            f"<td>{r.price:.3f}</td><td>{r.token_amount:,.2f}</td>"
+            f"<td>{r.usdc_amount:,.2f}</td><td>{tag}</td></tr>")
+    head2 = ("<tr><th>price（No 代币）</th><th>taker 方向</th><th>USDC</th>"
+             "<th>outcome</th><th>p_event</th><th>D</th></tr>")
+    rows2 = [
+        f"<tr><td>{r.price:.3f}</td><td>{r.taker_direction}</td>"
+        f"<td>{r.usdc_amount:,.2f}</td><td>{r.outcome_label}"
+        f"（seq={r.outcome_seq}）</td><td><b>{r.p_event:.3f}</b></td>"
+        f"<td><b>{int(r.D):+d}</b></td></tr>"
+        for r in clean.itertuples(index=False)
+    ]
+    fills = raw.loc[~raw["is_relay"]]
+    total = float(fills["token_amount"].sum())
+    return f"""
+<h4>实际数据长什么样：一笔真实订单的全部行</h4>
+<p>市场 <code>{slug}</code>（登记主题 mideast_conflict，"特朗普在 6 月 30 日前
+宣布美伊停火结束"），UTC {ts}。taker <code>{_short(raw['taker'].iloc[0])}</code>
+的一笔卖单吃掉了三档买盘挂单——链上产生 <b>4 行</b>：3 条 maker-taker 成交腿
++ 1 条交易所（<code>0xE111…996b</code>）作对手方的中继腿：</p>
+{wrap(head1, rows1)}
+<div class='texnote'>三条成交腿份额 2,196.87 + 26.51 + 4,966.93 =
+{total:,.2f}，与中继腿的 {total:,.2f} 恰好相等——中继腿是交易所对整笔订单的
+汇总记账，保留它成交量会翻倍，故清洗层剔除。行键
+<code>137_区块号_日志序号</code> 全局唯一。</div>
+<p>同一笔在<b>清洗后分析层</b>（daily_aligned 同构）中是 3 行，统一换算到
+"YES 视角"：该 taker 卖出的是 <b>No</b> 代币（outcome_seq = 2），故事件概率
+p_event = 1 − price ≈ 0.026，方向 D = +1（卖 No 等价于把"停火结束"的概率
+推高——利多原油的升级信号）：</p>
+{wrap(head2, rows2)}
+"""
+
+
 def qa_section(meta: dict) -> str:
     lock_rows = "".join(
         f"<tr><td>{p}</td><td>{m['n_minutes']:,}</td><td>{m['n_days']}</td>"
@@ -152,6 +207,7 @@ def qa_section(meta: dict) -> str:
 成交量恰好翻倍）。一个吃单吃掉多档挂单会产生多行；如需订单级可按
 <code>(tx_hash, taker)</code> 聚合。行键 <code>chainId_block_logIndex</code>
 全局唯一、天然幂等。</div>
+{example_section()}
 <div class="qa"><b>时间戳精确到多少？</b>　链上出块时间，<b>秒级</b>；Polygon
 出块间隔约 2.1 秒，即同一秒内可有多笔、时间分辨率下限约 2 秒。分钟信号取
 桶 [T-60s, T) 标签 T，只含严格早于 T 的成交。</div>

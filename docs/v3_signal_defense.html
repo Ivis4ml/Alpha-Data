@@ -139,6 +139,23 @@ AG、CU、M；样本 2026-01-05 至 07-13 的全部交易分钟。方向性结�
 成交量恰好翻倍）。一个吃单吃掉多档挂单会产生多行；如需订单级可按
 <code>(tx_hash, taker)</code> 聚合。行键 <code>chainId_block_logIndex</code>
 全局唯一、天然幂等。</div>
+
+<h4>实际数据长什么样：一笔真实订单的全部行</h4>
+<p>市场 <code>trump-announces-us-x-iran-ceasefire-over-by-june-30-20260607232556276-219</code>（登记主题 mideast_conflict，"特朗普在 6 月 30 日前
+宣布美伊停火结束"），UTC 2026-06-27 10:29:14。taker <code>0xC8ab…6418</code>
+的一笔卖单吃掉了三档买盘挂单——链上产生 <b>4 行</b>：3 条 maker-taker 成交腿
++ 1 条交易所（<code>0xE111…996b</code>）作对手方的中继腿：</p>
+<div class="tablewrap"><table><tr><th>id（链_区块_日志序号）</th><th>maker</th><th>taker</th><th>taker 方向</th><th>价格</th><th>份额</th><th>USDC</th><th>中继腿?</th></tr><tr><td><code>137_89234106_418</code></td><td>0x60a9…5A71</td><td>0xC8ab…6418</td><td>SELL</td><td>0.974</td><td>2,196.87</td><td>2,139.75</td><td>否（保留）</td></tr><tr><td><code>137_89234106_421</code></td><td>0xC4A7…898A</td><td>0xC8ab…6418</td><td>SELL</td><td>0.974</td><td>26.51</td><td>25.82</td><td>否（保留）</td></tr><tr><td><code>137_89234106_424</code></td><td>0xc84f…E0c5</td><td>0xC8ab…6418</td><td>SELL</td><td>0.973</td><td>4,966.93</td><td>4,832.82</td><td>否（保留）</td></tr><tr class="die"><td><code>137_89234106_426</code></td><td>0xC8ab…6418</td><td>0xE111…996B</td><td>BUY</td><td>0.973</td><td>7,190.31</td><td>6,998.40</td><td><b>是（剔除）</b></td></tr></table></div>
+<div class='texnote'>三条成交腿份额 2,196.87 + 26.51 + 4,966.93 =
+7,190.31，与中继腿的 7,190.31 恰好相等——中继腿是交易所对整笔订单的
+汇总记账，保留它成交量会翻倍，故清洗层剔除。行键
+<code>137_区块号_日志序号</code> 全局唯一。</div>
+<p>同一笔在<b>清洗后分析层</b>（daily_aligned 同构）中是 3 行，统一换算到
+"YES 视角"：该 taker 卖出的是 <b>No</b> 代币（outcome_seq = 2），故事件概率
+p_event = 1 − price ≈ 0.026，方向 D = +1（卖 No 等价于把"停火结束"的概率
+推高——利多原油的升级信号）：</p>
+<div class="tablewrap"><table><tr><th>price（No 代币）</th><th>taker 方向</th><th>USDC</th><th>outcome</th><th>p_event</th><th>D</th></tr><tr><td>0.973</td><td>SELL</td><td>4,832.82</td><td>No（seq=2）</td><td><b>0.027</b></td><td><b>+1</b></td></tr><tr><td>0.974</td><td>SELL</td><td>2,139.75</td><td>No（seq=2）</td><td><b>0.026</b></td><td><b>+1</b></td></tr><tr><td>0.974</td><td>SELL</td><td>25.82</td><td>No（seq=2）</td><td><b>0.026</b></td><td><b>+1</b></td></tr></table></div>
+
 <div class="qa"><b>时间戳精确到多少？</b>　链上出块时间，<b>秒级</b>；Polygon
 出块间隔约 2.1 秒，即同一秒内可有多笔、时间分辨率下限约 2 秒。分钟信号取
 桶 [T-60s, T) 标签 T，只含严格早于 T 的成交。</div>
@@ -182,7 +199,7 @@ high == low 的「锁死分钟」占比作代理监控（下表，2-4%，多为�
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.854371</dc:date>
+    <dc:date>2026-07-16T21:11:21.291751</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -980,7 +997,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.861823</dc:date>
+    <dc:date>2026-07-16T21:11:21.298910</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -1317,7 +1334,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.866861</dc:date>
+    <dc:date>2026-07-16T21:11:21.304536</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -2106,7 +2123,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.872165</dc:date>
+    <dc:date>2026-07-16T21:11:21.309013</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -2432,7 +2449,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.876457</dc:date>
+    <dc:date>2026-07-16T21:11:21.313567</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -3105,7 +3122,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.882438</dc:date>
+    <dc:date>2026-07-16T21:11:21.319319</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -3849,7 +3866,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.888068</dc:date>
+    <dc:date>2026-07-16T21:11:21.325068</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -4338,7 +4355,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.894765</dc:date>
+    <dc:date>2026-07-16T21:11:21.331819</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -4954,7 +4971,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.899548</dc:date>
+    <dc:date>2026-07-16T21:11:21.336817</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -5482,7 +5499,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.904149</dc:date>
+    <dc:date>2026-07-16T21:11:21.341531</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -5941,7 +5958,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.908902</dc:date>
+    <dc:date>2026-07-16T21:11:21.346608</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -6457,7 +6474,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.914197</dc:date>
+    <dc:date>2026-07-16T21:11:21.355349</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -7183,7 +7200,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.920750</dc:date>
+    <dc:date>2026-07-16T21:11:21.372061</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -7768,7 +7785,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.938190</dc:date>
+    <dc:date>2026-07-16T21:11:21.376850</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -8275,7 +8292,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.943418</dc:date>
+    <dc:date>2026-07-16T21:11:21.381991</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -8979,7 +8996,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.948689</dc:date>
+    <dc:date>2026-07-16T21:11:21.387406</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -9542,7 +9559,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.956455</dc:date>
+    <dc:date>2026-07-16T21:11:21.395058</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -10461,7 +10478,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.964636</dc:date>
+    <dc:date>2026-07-16T21:11:21.403102</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -11003,7 +11020,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.970105</dc:date>
+    <dc:date>2026-07-16T21:11:21.408031</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -11564,7 +11581,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.974495</dc:date>
+    <dc:date>2026-07-16T21:11:21.412453</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -12110,7 +12127,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.981017</dc:date>
+    <dc:date>2026-07-16T21:11:21.423744</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -13060,7 +13077,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.987956</dc:date>
+    <dc:date>2026-07-16T21:11:21.430447</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -13796,7 +13813,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:03.995238</dc:date>
+    <dc:date>2026-07-16T21:11:21.437196</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -14624,7 +14641,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.001973</dc:date>
+    <dc:date>2026-07-16T21:11:21.444818</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -15434,7 +15451,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.008786</dc:date>
+    <dc:date>2026-07-16T21:11:21.450735</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -16170,7 +16187,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.014394</dc:date>
+    <dc:date>2026-07-16T21:11:21.456547</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -17021,7 +17038,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.020196</dc:date>
+    <dc:date>2026-07-16T21:11:21.462516</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -17776,7 +17793,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.026837</dc:date>
+    <dc:date>2026-07-16T21:11:21.469203</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -18465,7 +18482,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.034247</dc:date>
+    <dc:date>2026-07-16T21:11:21.476359</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -19210,7 +19227,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.041652</dc:date>
+    <dc:date>2026-07-16T21:11:21.483595</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -19919,7 +19936,7 @@ z
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-07-16T21:01:04.048765</dc:date>
+    <dc:date>2026-07-16T21:11:21.490437</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
