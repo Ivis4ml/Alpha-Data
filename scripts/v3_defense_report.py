@@ -189,6 +189,33 @@ def example_section() -> str:
 p_event = 1 − price ≈ 0.026，方向 D = +1（卖 No 等价于把"停火结束"的概率
 推高——利多原油的升级信号）：</p>
 {wrap(head2, rows2)}
+<h4>字段词典（答辩速查）</h4>
+{wrap('<tr><th>字段</th><th>含义</th></tr>', [
+    "<tr><td><code>id</code></td><td>链ID_区块号_日志序号。137 = Polygon；"
+    "logIndex 为事件在区块全部日志中的序号（同区块内其他事件如代币转移占用"
+    "中间序号，故 418/421/424/426 不连续）。(区块, 序号) 全局唯一，重爬只得"
+    "相同行，按 id 去重即幂等</td></tr>",
+    "<tr><td><code>maker</code></td><td>挂单方钱包地址：限价单挂在簿上等待"
+    "成交的一方（提供流动性，被动）。本例三条成交腿是三个不同的做市地址</td></tr>",
+    "<tr><td><code>taker</code></td><td>吃单方钱包地址：主动扫过盘口成交的"
+    "一方。中继腿上 taker = 交易所合约本身（判定 is_relay 的依据）</td></tr>",
+    "<tr><td><code>*_direction</code></td><td>同笔两视角，恒为镜像。方向由"
+    "「谁付出哪种资产」推出：事件里资产 id 0 = USDC、非 0 = 结果代币，maker "
+    "付 USDC 即 maker 买 / taker 卖——来自资产转移事实，非 Lee-Ready 式"
+    "推断</td></tr>",
+    "<tr><td><code>price</code></td><td>USDC / 份 ∈ (0,1)，即市场对该代币"
+    "对应结果的隐含概率（结算时押对方每份兑付 1 USDC）</td></tr>",
+    "<tr><td><code>token_amount / usdc_amount</code></td><td>份数与名义额，"
+    "usdc = price × token。卖单先吃出价最高的买盘（0.974 → 0.973 扫盘）</td></tr>",
+    "<tr><td><code>fee_usdc</code></td><td>协议费，记 taker 侧（常在中继腿；"
+    "本例为 0）</td></tr>",
+    "<tr><td><code>token_asset_id</code></td><td>ERC-1155 positionId（由抵押品、"
+    "conditionId、结果集合两层 keccak 派生）——连接 asset_map 得到市场与 "
+    "Yes/No 归属的外键；同一市场的 Yes 与 No 是两个不同 id</td></tr>",
+    "<tr><td><code>p_event / D</code></td><td>清洗层的 YES 视角换算：seq=2 "
+    "则 p_event = 1 − price；D 真值表——买 Yes +1 / 卖 Yes −1 / 买 No −1 / "
+    "卖 No +1（经 2024-11 全月逐行核对）</td></tr>",
+])}
 """
 
 
