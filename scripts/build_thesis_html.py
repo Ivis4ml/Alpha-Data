@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import v3_defense_report  # noqa: E402
+import v3_overview_section  # noqa: E402
 import v3_report_sections  # noqa: E402
 import v3_supp_sections  # noqa: E402
 from pub_style import tex_svg  # noqa: E402
@@ -303,6 +304,7 @@ def build() -> str:
     part2_html = v3_report_sections.build_part2(tex, fig_tag)
     appc_html = v3_report_sections.build_appendix_c()
     part3_html = v3_defense_report.build_embedded()
+    overview_html = v3_overview_section.build_overview()
     supp_edge = v3_supp_sections.sec_edge_cases()
     supp_sigstats = v3_supp_sections.sec_signal_stats()
     supp_rankic = v3_supp_sections.sec_rank_ic()
@@ -349,10 +351,10 @@ def build() -> str:
     return f"""<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
-<style>{STYLE}{v3_defense_report.STYLE_EXTRA}</style>
+<style>{STYLE}{v3_defense_report.STYLE_EXTRA}{v3_overview_section.OVERVIEW_STYLE}</style>
 <main>
 <div class="eyebrow">Alpha-Data 研究报告 · feat/cn-futures-polymarket ·
-2026-07-16（v3 合订本：Ⅰ 窗口级 v1.1 · Ⅱ 识别与功效 v3.1 · Ⅲ 分钟级检验）</div>
+2026-07-17（v4 评审版：总览篇 + 细节篇 Ⅰ/Ⅱ/Ⅲ）</div>
 <h1>Polymarket 事件概率与中国商品期货：<br>跨市场传导、时段吸收与升水回归</h1>
 
 <div class="abstract"><b class="hd">摘要</b>　本文研究去中心化预测市场 Polymarket 的
@@ -399,7 +401,15 @@ RankIC 全正、ICIR 0.5-0.6）；离散化组合整体弱于连续值结构，�
 跨品种一致为负。附写给期货研究员的 Polymarket 完全指南与 FAQ 24 问
 （篇内附录）。</div>
 
-<div class="toc"><b>目录</b><br>
+{overview_html}
+
+<div class="toc"><b>细节篇目录</b><br>
+<b>总览篇（第一眼层）</b><br>
+<a href="#ov1">O.1 研究问题与总答案</a>　<a href="#ov2">O.2 数据一览</a>　
+<a href="#ov3">O.3 方法框架</a><br>
+<a href="#ov4">O.4 结论总表（分级）</a>　<a href="#ov5">O.5 审计与勘误记录</a>　
+<a href="#ov6">O.6 细节导航</a><br>
+
 <b>第一部分（v1.1，样本至 04-28）</b><br>
 <a href="#s1">1 引言</a><br><a href="#s2">2 制度背景</a><br>
 <a href="#s3">3 数据</a><br><a href="#s4">4 信号构造（五步推导）</a><br>
