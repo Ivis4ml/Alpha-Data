@@ -259,7 +259,9 @@ def guide_box() -> str:
 具体疑问查 <a href="#appB">附录 B（FAQ，24 问）</a>与
 <a href="#appC">附录 C（字段词典）</a>；与《分钟线数据方案（合并版）》
 方法论标准的逐条对照见 <a href="#appD">附录 D</a>；复现命令与产物索引见
-<a href="#appE">附录 E</a>。文中标注「评审要求口径」处，对应导师预答辩提问的原文口径。</div>
+<a href="#appE">附录 E</a>。文中标注「评审要求口径」处，对应导师预答辩提问
+的原文口径。本篇同时以「第三部分」收录于主报告
+cn_futures_polymarket_report.html（合订本）。</div>
 """
 
 
@@ -1609,6 +1611,66 @@ def build() -> str:
 {appendix_e()}
 </main>
 """
+
+
+PART3_BANNER = """
+<div class="part" id="part3"><div class="kicker">第三部分 · 分钟级信号检验篇</div>
+<div class="pt">Polymarket 事件数据的分钟级信号库、统计与 IC 检验</div>
+<p>第一部分回答「窗口级传导结构是什么」，第二部分回答「哪些效应可识别」，
+本篇下沉到<b>分钟粒度</b>：数据逐行定义与 22 条 edge cases、40 个信号的
+显式公式与归一化登记、频率 / 分布 / IC / ICIR / 事件研究的全套统计基本功，
+以及组合信号的完整（好坏并陈）结果。<b>本篇为自包含单元：篇内的节号
+（§0-§6）与附录号（附录 A-E）均指本篇内部</b>；全报告层面的参考文献与
+总附录（窗口边界 / 术语表 / v3 产物）在本篇之后。本篇亦有独立版本
+（v3_signal_defense.html），内容同源生成。</p></div>
+"""
+
+
+def build_embedded() -> str:
+    """供主报告嵌入的第三部分：锚点加 m 前缀、交叉引用改写为部内引用。"""
+    meta = json.loads((D / "meta.json").read_text())
+    body = (
+        PART3_BANNER
+        + summary_section(meta)
+        + pm_data_section(meta)
+        + edge_cases_section()
+        + quality_section(meta)
+        + construction_section()
+        + signal_defs_section()
+        + stats_section()
+        + ic_section()
+        + event_section(meta)
+        + combo_section()
+        + honest_section()
+        + appendix_a()
+        + appendix_b()
+        + appendix_c()
+        + appendix_d()
+        + appendix_e()
+    )
+    # 独立版收录说明在合订本中不需要（须在“主报告”改写之前删除）。
+    body = body.replace(
+        "本篇同时以「第三部分」收录于主报告\n"
+        "cn_futures_polymarket_report.html（合订本）。", "")
+    # 锚点加前缀（双引号与单引号两种写法），防止与主报告冲突。
+    for q in ('"', "'"):
+        body = body.replace(f'id={q}s', f'id={q}ms')
+        body = body.replace(f'href={q}#s', f'href={q}#ms')
+        body = body.replace(f'id={q}app', f'id={q}mapp')
+        body = body.replace(f'href={q}#app', f'href={q}#mapp')
+    # 「主报告」引用在合订本语境下改写为部内引用。
+    body = body.replace("主报告 §16", '第二部分 <a href="#s16">§16</a>')
+    body = body.replace("主报告 §14.1", '第二部分 <a href="#s14">§14.1</a>')
+    body = body.replace("主报告 §12.6", '第一部分 <a href="#s12">§12.6</a>')
+    body = body.replace("主报告 §3", '第一部分 <a href="#s3">§3</a>')
+    body = body.replace("主报告（cn_futures_polymarket_report.html v2.1）",
+                        "本报告第一、二部分")
+    body = body.replace("主报告（v2.1）", "第二部分（v3.1）")
+    body = body.replace("见其 §16", '见第二部分 <a href="#s16">§16</a>')
+    body = body.replace("主报告", "第一、二部分")
+    # 本篇执行摘要标题在合订本中改名。
+    body = body.replace(">0　执行摘要</h2>", ">0　本篇导读（执行摘要）</h2>")
+    return body
 
 
 def main() -> int:

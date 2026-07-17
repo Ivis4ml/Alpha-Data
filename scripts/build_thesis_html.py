@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import v3_defense_report  # noqa: E402
 import v3_report_sections  # noqa: E402
 from pub_style import tex_svg  # noqa: E402
 
@@ -300,6 +301,7 @@ def build() -> str:
     suff_html, iv_html = surrogate_tables_html()
     part2_html = v3_report_sections.build_part2(tex, fig_tag)
     appc_html = v3_report_sections.build_appendix_c()
+    part3_html = v3_defense_report.build_embedded()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -336,10 +338,10 @@ def build() -> str:
     return f"""<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
-<style>{STYLE}</style>
+<style>{STYLE}{v3_defense_report.STYLE_EXTRA}</style>
 <main>
 <div class="eyebrow">Alpha-Data 研究报告 · feat/cn-futures-polymarket ·
-2026-07-16（v2.1：第一部分 v1.1 + 第二部分 v3.1 评审修订版）</div>
+2026-07-16（v3 合订本：Ⅰ 窗口级 v1.1 · Ⅱ 识别与功效 v3.1 · Ⅲ 分钟级检验）</div>
 <h1>Polymarket 事件概率与中国商品期货：<br>跨市场传导、时段吸收与升水回归</h1>
 
 <div class="abstract"><b class="hd">摘要</b>　本文研究去中心化预测市场 Polymarket 的
@@ -371,7 +373,15 @@ SC 保留独立增量（t=3.68）</b>，与 SC 可交割中东油种的供给风
 功效门控在修正口径下全线拦截；（四）两套信号对<b>次日方向</b>的 OOS 增量
 预测力整体不为正——唯一候选是豆粕 M（v3 信号 +4.9%，块自助 p≈0.001，但
 跨品种 BH-FDR q=0.12 且缺豆粕期货/USDCNH 控制）——Polymarket 信息的
-变现通道是闭市时段同期吸收与事件风险测量，不是隔日方向预测。</div>
+变现通道是闭市时段同期吸收与事件风险测量，不是隔日方向预测。
+<br><br><b class="hd">第三部分（分钟级信号检验篇）</b>　把测量下沉到
+分钟粒度：链上数据逐行定义与 22 条 edge cases、40 个信号（数值 / 量价
+组合 / 离散复杂统计 / 条件组合四族）的显式公式与归一化登记、频率 / 分布
+/ IC / ICIR / 双基线事件研究全套统计。核心发现：唯一跨品种稳健的结构是
+「120 分钟未兑现缺口」（C8：信念累积与价格累积之差，SC / AU / CU 六视界
+RankIC 全正、ICIR 0.5-0.6）；离散化组合整体弱于连续值结构，确认型组合
+跨品种一致为负。附写给期货研究员的 Polymarket 完全指南与 FAQ 24 问
+（篇内附录）。</div>
 
 <div class="toc"><b>目录</b><br>
 <b>第一部分（v1.1，样本至 04-28）</b><br>
@@ -388,6 +398,14 @@ SC 保留独立增量（t=3.68）</b>，与 SC 可交割中东油种的供给风
 <a href="#s16">16 双门控与影响层</a><br>
 <a href="#s17">17 增量预测与吸收复核</a><br>
 <a href="#s18">18 第二部分结论</a><br>
+<b>第三部分（分钟级信号检验，篇内编号）</b><br>
+<a href="#part3">开篇与本篇导读</a><br>
+<a href="#ms1">§1 数据层：逐行定义与 edge cases</a><br>
+<a href="#ms2">§2-3 信号构造与 40 个公式</a><br>
+<a href="#ms43">§4 统计基本功：IC / 事件研究</a><br>
+<a href="#ms5">§5-6 组合结果与多重检验</a><br>
+<a href="#mappA">篇内附录 A-E（Polymarket 指南 / FAQ / 词典 /
+方法论对照 / 复现）</a><br>
 <a href="#refs">参考文献</a><br>
 <a href="#appA">附录 A 窗口边界</a><br><a href="#appB">附录 B 术语表</a><br>
 <a href="#appC">附录 C v3 术语与产物</a></div>
@@ -881,6 +899,8 @@ episode 复现——这是把"探索性"升级为"结论"的必要条件。</li>
 
 {part2_html}
 
+{part3_html}
+
 <h2 id="refs">参考文献</h2>
 <ol class="refs">
 <li>Roan (@RohOnChain). <i>The Math Needed for Trading on Polymarket (Complete
@@ -949,7 +969,9 @@ deep_analysis_cn_polymarket.py → intl_benchmark_analysis.py →
 ablation_cn_polymarket.py</code>；（第二部分）：<code>crawl_polymarket_chain.py →
 v3_build_tape.py → v3_measurement.py → v3_baseline_extended.py → v3_layer5.py →
 v3_figures.py → build_thesis_html.py</code>
-· 74 项 pytest · 第一部分管线经 23 智能体对抗审查（17 项缺陷修复）· 分支
+；（第三部分）：<code>v3_defense_build.py → v3_defense_report.py</code>
+· 74 项 pytest · 第一部分管线经 23 智能体对抗审查（17 项缺陷修复），
+第三部分经 5 视角对抗审查（71 项发现修复）· 分支
 feat/cn-futures-polymarket</div>
 </main>
 """
