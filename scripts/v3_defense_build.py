@@ -116,8 +116,11 @@ def pm_minute_theme(con, registry: pd.DataFrame, theme: str, product: str,
     df = df.sort_values(["condition_id", "m_end"])
     df["dl_m"] = logit(df["vwap"].to_numpy()) - logit(
         df.groupby("condition_id")["vwap"].shift(1).to_numpy())
+    # 权重时点化：截至当分钟的市场累计成交额（静态 usdc_win 会让 1 月的
+    # 权重「知道」6 月哪些市场变大——评审修订）。
+    cum = df.groupby("condition_id")["usdc"].cumsum()
     df["w"] = (df["condition_id"].map(meta["orientation"]).astype(float)
-               * np.sqrt(df["condition_id"].map(meta["usdc_win"]).astype(float)))
+               * np.sqrt(cum.clip(lower=1.0)))
     df["flow_m"] = (df["condition_id"].map(meta["orientation"]).astype(float)
                     * df["signed"])
     df["wdl"] = df["w"] * df["dl_m"]
@@ -153,6 +156,15 @@ def cn_panel(product: str) -> pd.DataFrame:
         fwd = pd.Series(logc).shift(-k) - logc
         same = df["seg"].shift(-k) == df["seg"]
         df[f"fwd_{k}"] = fwd.where(same)
+    # 未来区间 VWAP 标签（老师文档 §标签定义的推荐口径；分钟 vwap 代理 =
+    # money / volume，比值型收益中合约乘数抵消）。close 标签为主口径，
+    # VWAP 标签用于 §4 的标签稳健性对照。
+    vw = df["money"] / df["volume"].replace(0, np.nan)
+    for k in (5, 15):
+        fwd_mean_vw = vw.rolling(k, min_periods=max(2, k // 2)).mean().shift(-k)
+        same = df["seg"].shift(-k) == df["seg"]
+        df[f"fwd_vwap_{k}"] = np.log(fwd_mean_vw / vw).where(same)
+
     grp = df.groupby("seg", sort=False)
     df["mom15"] = grp["r1"].transform(
         lambda s: s.rolling(15, min_periods=5).sum())
@@ -216,10 +228,10 @@ def add_signals(panel: pd.DataFrame, themes: list[str]) -> pd.DataFrame:
     var = (mz**2).rolling(ZWIN, min_periods=ZMIN).mean()
     beta = (cov / var.replace(0, np.nan)).fillna(0.0)
     df["C7"] = df["N4"] - beta * mz
-    # C8 未兑现累积：120min PM 创新 z 减 120min 价格动量 z
+    # C8 未兑现累积：两腿均按交易分钟序跨段滚动 120（口径对称）；
+    # 跨段首分钟的价格收益缺失按 0 计（gap 跳空不入价格腿）。
     dl120 = df["N1"].rolling(120, min_periods=30).sum()
-    r120 = df.groupby("seg", sort=False)["r1"].transform(
-        lambda s: s.rolling(120, min_periods=30).sum())
+    r120 = df["r1"].fillna(0.0).rolling(120, min_periods=30).sum()
     df["C8"] = zscore(dl120).fillna(0.0) - zscore(r120).fillna(0.0)
     df["C9"] = df["N5"] * az                                       # 不平衡×成交额
     df["C10"] = df["N9"] - rz                                      # 信念波动-实现波动差
@@ -286,61 +298,129 @@ def add_signals(panel: pd.DataFrame, themes: list[str]) -> pd.DataFrame:
          .rolling(15, min_periods=1).max()) for t in themes)
     df["K10"] = (pd.Series(multi, index=df.index) >= 2).astype(float) * np.sign(
         df["N2"])                                                  # 跨主题共振
+
+    # ---- X 族：组合 / 条件 / 共振信号（离散签名型，公式见报告 §3.4）----
+    sgn_now = sgn.astype(float)
+    # X1 共振 + 期货同向确认
+    df["X1"] = df["K10"] * (np.sign(df["K10"] * mz) > 0).astype(float)
+    # X2 共振但期货未动（未兑现共振）
+    df["X2"] = df["K10"] * (np.abs(mz) < 0.5).astype(float)
+    # X3 事件 × 期货高波动状态
+    df["X3"] = sgn_now * (rz > 1.0).astype(float)
+    # X4 事件 × 期货放量
+    df["X4"] = sgn_now * (vz > 1.0).astype(float)
+    # X5 一小时内同向第二击（事件当刻且 60min 同向计数 >= 2）
+    up60 = df["E_up"].rolling(60, min_periods=1).sum()
+    dn60 = df["E_dn"].rolling(60, min_periods=1).sum()
+    df["X5"] = ((df["E_up"] == 1) & (up60 >= 2)).astype(float) \
+        - ((df["E_dn"] == 1) & (dn60 >= 2)).astype(float)
+    # X6 美元量爆发 + 期货未动（大钱进场而期货没反应）
+    df["X6"] = (np.sign(flow15) * df["E_big"]
+                * (np.abs(mz) < 0.5).astype(float))
+    # X7 事件 × 夜盘时段（时段状态交互）
+    is_night = (df["session"] == "night").astype(float)
+    df["X7"] = sgn_now * is_night
+    # X8 事件 × 日盘开盘 30 分钟
+    pos_in_sess = df.groupby(["trade_date", "session"], sort=False).cumcount()
+    is_open30 = ((df["session"] == "day") & (pos_in_sess < 30)).astype(float)
+    df["X8"] = sgn_now * is_open30
+    # X9 延迟反应：3 分钟前有事件且期货 3 分钟未动，本刻触发
+    sgn_lag3 = pd.Series(sgn_now).shift(3).fillna(0.0)
+    r3 = df.groupby("seg", sort=False)["r1"].transform(
+        lambda s: s.rolling(3, min_periods=3).sum())
+    not_moved = (r3.abs() < 0.3 * df["rv15"].fillna(np.inf)).astype(float)
+    df["X9"] = sgn_lag3 * not_moved
+    # X10 多尺度同向确认：1min 跳与此前 14min 累积同向
+    prior14 = df["N2"] - df["N1"]
+    df["X10"] = sgn_now * (np.sign(df["N1"] * prior14) > 0).astype(float)
     return df
 
 
 NUM_SIGNALS = [f"N{i}" for i in range(1, 11)]
 COMBO_SIGNALS = [f"C{i}" for i in range(1, 11)]
 K_SIGNALS = [f"K{i}" for i in range(1, 11)]
-ALL_SIGNALS = NUM_SIGNALS + COMBO_SIGNALS + K_SIGNALS
+X_SIGNALS = [f"X{i}" for i in range(1, 11)]
+ALL_SIGNALS = NUM_SIGNALS + COMBO_SIGNALS + K_SIGNALS + X_SIGNALS
 
 
 # ---------------------------------------------------------------- 评估
 def ic_table(df: pd.DataFrame, product: str) -> pd.DataFrame:
-    """数值信号 IC / RankIC / ICIR（逐日 IC 的 mean/std）。"""
+    """数值信号 IC / RankIC / ICIR（逐日 IC 的 mean/std），并按时段分层。
+
+    ``scope`` 列：``all`` 全时段、``day`` 日盘、``night`` 夜盘——分钟因子
+    的时段依赖是方法论要求的必检项（老师文档 §状态模块 / 分层回测）。
+    """
+    scopes: dict[str, pd.Series] = {"all": pd.Series(True, index=df.index)}
+    if (df["session"] == "night").any():
+        scopes["day"] = df["session"] == "day"
+        scopes["night"] = df["session"] == "night"
     rows = []
     for sig in ALL_SIGNALS:
         s = df[sig]
         active = s.replace(0.0, np.nan).notna()
-        for k in HORIZONS:
-            y = df[f"fwd_{k}"]
-            ok = active & y.notna()
-            n = int(ok.sum())
-            if n < 200:
-                continue
-            sv, yv = s[ok], y[ok]
-            pear = float(np.corrcoef(sv, yv)[0, 1])
-            rank = float(sv.rank().corr(yv.rank()))
-            daily = (
-                pd.DataFrame({"d": df.loc[ok, "trade_date"], "s": sv, "y": yv})
-                .groupby("d")
-                .apply(lambda b: b["s"].corr(b["y"]) if len(b) >= 10 else np.nan,
-                       include_groups=False)
-                .dropna()
-            )
-            icir = (float(daily.mean() / daily.std())
-                    if len(daily) >= 20 and daily.std() > 0 else np.nan)
-            rows.append(
-                {"product": product, "signal": sig, "horizon": k, "n": n,
-                 "ic": pear, "rank_ic": rank, "ic_daily_mean": float(daily.mean()),
-                 "ic_daily_std": float(daily.std()), "icir": icir,
-                 "n_days": int(len(daily))}
-            )
+        for scope, smask in scopes.items():
+            for k in HORIZONS:
+                y = df[f"fwd_{k}"]
+                ok = active & y.notna() & smask
+                n = int(ok.sum())
+                if n < 200:
+                    continue
+                sv, yv = s[ok], y[ok]
+                if sv.nunique() < 2:
+                    continue
+                pear = float(np.corrcoef(sv, yv)[0, 1])
+                rank = float(sv.rank().corr(yv.rank()))
+                daily = (
+                    pd.DataFrame({"d": df.loc[ok, "trade_date"],
+                                  "s": sv, "y": yv})
+                    .groupby("d")
+                    .apply(lambda b: (b["s"].corr(b["y"])
+                                      if len(b) >= 10 and b["s"].nunique() > 1
+                                      else np.nan),
+                           include_groups=False)
+                    .dropna()
+                )
+                icir = (float(daily.mean() / daily.std())
+                        if len(daily) >= 20 and daily.std() > 0 else np.nan)
+                rows.append(
+                    {"product": product, "signal": sig, "scope": scope,
+                     "horizon": k, "n": n,
+                     "ic": pear, "rank_ic": rank,
+                     "ic_daily_mean": (float(daily.mean()) if len(daily)
+                                       else np.nan),
+                     "ic_daily_std": (float(daily.std()) if len(daily)
+                                      else np.nan),
+                     "icir": icir, "n_days": int(len(daily))}
+                )
     return pd.DataFrame(rows)
 
 
 def signal_stats(df: pd.DataFrame, product: str) -> pd.DataFrame:
+    """逐信号统计：频率、取值统计量、缺失率与极值率（老师文档 §因子评价）。
+
+    本库约定信号缺测统一编码为 0（"无信息"先验），故 ``missing_rate`` 指
+    构造输入不可得的分钟占比（z 分数预热期），``extreme_rate`` 为非零值中
+    偏离其均值超过 3 个标准差的占比。
+    """
     rows = []
     n_days = df["trade_date"].nunique()
+    warm = int(min(ZMIN, len(df)))
     for sig in ALL_SIGNALS:
         s = df[sig].replace([np.inf, -np.inf], np.nan)
         nz = s[(s != 0.0) & s.notna()]
+        if len(nz) > 10 and float(nz.std()) > 0:
+            extreme = float(
+                (np.abs(nz - nz.mean()) > 3 * nz.std()).mean())
+        else:
+            extreme = np.nan
         rows.append(
             {
                 "product": product, "signal": sig,
                 "n_minutes": int(len(s)), "nonzero": int(len(nz)),
                 "nonzero_rate": float(len(nz) / max(len(s), 1)),
                 "per_day": float(len(nz) / max(n_days, 1)),
+                "missing_rate": float(warm / max(len(s), 1)),
+                "extreme_rate": extreme,
                 "mean": float(nz.mean()) if len(nz) else np.nan,
                 "std": float(nz.std()) if len(nz) else np.nan,
                 "skew": float(nz.skew()) if len(nz) > 10 else np.nan,
@@ -351,20 +431,52 @@ def signal_stats(df: pd.DataFrame, product: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def label_robustness(df: pd.DataFrame, product: str) -> pd.DataFrame:
+    """标签口径对照：close-to-close vs 未来区间 VWAP 的 RankIC（k=5, 15）。"""
+    rows = []
+    for sig in ALL_SIGNALS:
+        s = df[sig]
+        active = s.replace(0.0, np.nan).notna()
+        for k in (5, 15):
+            row = {"product": product, "signal": sig, "horizon": k}
+            for label, col in (("close", f"fwd_{k}"),
+                               ("vwap", f"fwd_vwap_{k}")):
+                y = df[col]
+                ok = active & y.notna()
+                if ok.sum() < 200 or s[ok].nunique() < 2:
+                    row[f"rank_ic_{label}"] = np.nan
+                else:
+                    row[f"rank_ic_{label}"] = float(
+                        s[ok].rank().corr(y[ok].rank()))
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def event_study(df: pd.DataFrame, product: str) -> pd.DataFrame:
     """离散事件研究：E_up / E_dn / E_big / K5 连发，1..15min 与直到下一事件。"""
     rows = []
     thresh = 1e-3
-    base = {k: float((df[f"fwd_{k}"].abs() > thresh).mean())
+    # 基线分母只取前向收益有效的分钟（与事件侧同口径，否则提升被高估）。
+    base = {k: float(df[f"fwd_{k}"].dropna().abs().gt(thresh).mean())
             for k in HORIZONS}
     base_absmean = {k: float(df[f"fwd_{k}"].abs().mean() * 1e4)
                     for k in HORIZONS}
+    # 收益基线（答辩要求口径）：品种平均分钟收益 × k（本库覆盖自 2026-01，
+    # 无法回溯一年，用全样本期均值声明代替，量级接近零）。
+    mu1 = float(df["r1"].mean())
+    base_ret_bp = {k: mu1 * k * 1e4 for k in HORIZONS}
     n_months = max(df["trade_date"].nunique() / 21.0, 1e-9)
     specs = {
         "E_up(利多事件)": (df["E_up"] == 1, +1),
         "E_dn(利空事件)": (df["E_dn"] == 1, -1),
         "E_big(美元量爆发)": (df["E_big"] == 1, 0),
-        "E_burst(同向连发>=3)": (df["K5"] >= 3, 0),
+        "E_burst(同向连发首达3)": ((df["K5"] >= 3) & (df["K5"].shift(1) < 3), 0),
+        "X1(共振+期货确认)": (df["X1"] != 0, "X1"),
+        "X2(共振+期货未动)": (df["X2"] != 0, "X2"),
+        "X5(一小时内第二击)": (df["X5"] != 0, "X5"),
+        "X6(大额流+期货未动)": (df["X6"] != 0, "X6"),
+        "X7(夜盘事件)": (df["X7"] != 0, "X7"),
+        "X9(事件后3分钟未动)": (df["X9"] != 0, "X9"),
     }
     ev_idx = np.where(df["E_any"] == 1)[0]
     for name, (mask, direction) in specs.items():
@@ -373,8 +485,12 @@ def event_study(df: pd.DataFrame, product: str) -> pd.DataFrame:
             continue
         row = {"product": product, "event": name, "n": int(len(idx)),
                "per_month": float(len(idx) / n_months)}
-        sgn_ev = (np.sign(df["N1"].to_numpy()[idx]) if direction == 0
-                  else np.full(len(idx), direction))
+        if isinstance(direction, str):          # X 族：方向 = 信号自身符号
+            sgn_ev = np.sign(df[direction].to_numpy()[idx])
+        elif direction == 0:                    # 无先验方向：取当刻创新符号
+            sgn_ev = np.sign(df["N1"].to_numpy()[idx])
+        else:                                   # 固定先验方向（E_up/E_dn）
+            sgn_ev = np.full(len(idx), direction)
         for k in HORIZONS:
             fwd = df[f"fwd_{k}"].to_numpy()[idx]
             ok = np.isfinite(fwd)
@@ -383,6 +499,7 @@ def event_study(df: pd.DataFrame, product: str) -> pd.DataFrame:
             row[f"ret_bp_{k}"] = float(np.nanmean(fwd[ok] * sgn_ev[ok]) * 1e4)
             row[f"p_move_{k}"] = float((np.abs(fwd[ok]) > thresh).mean())
             row[f"lift_{k}"] = row[f"p_move_{k}"] / base[k]
+            row[f"excess_bp_{k}"] = row[f"ret_bp_{k}"] - base_ret_bp[k]
         # 直到下一事件（同类不区分方向，用 E_any；上限 240 分钟）
         nxt = np.searchsorted(ev_idx, idx, side="right")
         has = nxt < len(ev_idx)
@@ -403,7 +520,49 @@ def event_study(df: pd.DataFrame, product: str) -> pd.DataFrame:
     out = pd.DataFrame(rows)
     out.attrs["baseline_p"] = base
     out.attrs["baseline_absmean_bp"] = base_absmean
+    out.attrs["baseline_ret_bp"] = base_ret_bp
     return out
+
+
+# ---------------------------------------------------------------- p_event 分布
+def p_event_stats(con, registry: pd.DataFrame) -> pd.DataFrame:
+    """成交级 p_event 分布统计：全 tape 与逐登记主题。
+
+    回答"p_event 的成交均值是多少"这类问题的正式口径：简单均值、成交额
+    加权均值、中位数、极端区（<0.05 或 >0.95）与中间区（0.2-0.8）占比。
+    汇总均值本身没有独立经济含义（它是"哪些市场更活跃"的产物），必须与
+    分布占比一起呈现。
+    """
+    cols = "condition_id, p_event, usdc_amount"
+    agg = """
+        count(*)                                            AS n_trades,
+        avg(p_event)                                        AS mean_eq,
+        sum(p_event * usdc_amount) / sum(usdc_amount)       AS mean_usdc_wtd,
+        median(p_event)                                     AS med,
+        avg(CASE WHEN p_event < 0.05 OR p_event > 0.95
+                 THEN 1.0 ELSE 0 END)                       AS share_extreme,
+        avg(CASE WHEN p_event >= 0.20 AND p_event <= 0.80
+                 THEN 1.0 ELSE 0 END)                       AS share_mid,
+        sum(usdc_amount) / 1e6                              AS usdc_mn
+    """
+    rows = []
+    full = con.execute(
+        f"SELECT {agg} FROM {tape.union_sql(cols)} "
+        f"WHERE p_event IS NOT NULL").fetch_df()
+    full.insert(0, "scope", "全部二元市场")
+    rows.append(full)
+    for theme in sorted(registry["theme"].unique()):
+        ids = ",".join(
+            "'" + c + "'"
+            for c in registry.loc[registry["theme"] == theme,
+                                  "condition_id"].unique())
+        df = con.execute(
+            f"SELECT {agg} FROM {tape.union_sql(cols)} "
+            f"WHERE p_event IS NOT NULL AND condition_id IN ({ids})"
+        ).fetch_df()
+        df.insert(0, "scope", theme)
+        rows.append(df)
+    return pd.concat(rows, ignore_index=True)
 
 
 # ---------------------------------------------------------------- 全历史频率
@@ -461,7 +620,7 @@ def main() -> int:
     con = store.connect()
     registry = pd.read_parquet(REGISTRY)
 
-    ics, stats, events, meta = [], [], [], {}
+    ics, stats, events, labels, meta = [], [], [], [], {}
     for product, themes in PRODUCT_THEMES.items():
         print(f"[{product}] 面板 ...")
         panel = cn_panel(product)
@@ -477,6 +636,7 @@ def main() -> int:
         print(f"[{product}] IC / 统计 / 事件研究 ...")
         ics.append(ic_table(df, product))
         stats.append(signal_stats(df, product))
+        labels.append(label_robustness(df, product))
         ev = event_study(df, product)
         events.append(ev)
         meta[product] = {
@@ -485,8 +645,12 @@ def main() -> int:
             "locked_share": float(df["locked"].mean()),
             "pm_active_minute_share": float(
                 (df["N1"] != 0).mean()),
+            "night_minute_share": float((df["session"] == "night").mean()),
+            "n_segments": int(df["seg"].nunique()),
+            "fwd15_valid_share": float(df["fwd_15"].notna().mean()),
             "baseline_p_move": ev.attrs["baseline_p"],
             "baseline_absmean_bp": ev.attrs["baseline_absmean_bp"],
+            "baseline_ret_bp": ev.attrs["baseline_ret_bp"],
         }
 
     pd.concat(ics, ignore_index=True).to_parquet(
@@ -495,6 +659,13 @@ def main() -> int:
         OUT / "signal_stats.parquet", index=False)
     pd.concat(events, ignore_index=True).to_parquet(
         OUT / "event_study.parquet", index=False)
+    pd.concat(labels, ignore_index=True).to_parquet(
+        OUT / "label_robustness.parquet", index=False)
+
+    print("p_event 成交分布统计 ...")
+    pes = p_event_stats(con, registry)
+    pes.to_parquet(OUT / "p_event_stats.parquet", index=False)
+    print(pes.round(4).to_string(index=False))
 
     print("全历史逐月频率 ...")
     hist = history_monthly(con, args.skip_history)
