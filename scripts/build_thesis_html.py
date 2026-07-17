@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import v3_defense_report  # noqa: E402
-import v3_overview_section  # noqa: E402
+import v3_paper_body  # noqa: E402
 import v3_report_sections  # noqa: E402
 import v3_supp_sections  # noqa: E402
 from pub_style import tex_svg  # noqa: E402
@@ -304,7 +304,8 @@ def build() -> str:
     part2_html = v3_report_sections.build_part2(tex, fig_tag)
     appc_html = v3_report_sections.build_appendix_c()
     part3_html = v3_defense_report.build_embedded()
-    overview_html = v3_overview_section.build_overview()
+    paper_html = v3_paper_body.build_paper()
+    paper_abstract = v3_paper_body.ABSTRACT
     supp_edge = v3_supp_sections.sec_edge_cases()
     supp_sigstats = v3_supp_sections.sec_signal_stats()
     supp_rankic = v3_supp_sections.sec_rank_ic()
@@ -351,64 +352,23 @@ def build() -> str:
     return f"""<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
-<style>{STYLE}{v3_defense_report.STYLE_EXTRA}{v3_overview_section.OVERVIEW_STYLE}</style>
+<style>{STYLE}{v3_defense_report.STYLE_EXTRA}{v3_paper_body.PAPER_STYLE}</style>
 <main>
 <div class="eyebrow">Alpha-Data 研究报告 · feat/cn-futures-polymarket ·
-2026-07-17（v4 评审版：总览篇 + 细节篇 Ⅰ/Ⅱ/Ⅲ）</div>
+2026-07-17（v5 论文版：正文 + 在线附录 Ⅰ/Ⅱ/Ⅲ）</div>
 <h1>Polymarket 事件概率与中国商品期货：<br>跨市场传导、时段吸收与升水回归</h1>
 
-<div class="abstract"><b class="hd">摘要</b>　本文研究去中心化预测市场 Polymarket 的
-事件概率变化与中国商品期货收益之间的关系。我们把 388 个事件市场的逐笔成交转换为
-按国内期货交易时段切分的 logit 概率变化信号（防前视），与 88 个品种的主力连续
-分钟数据在约 75 个重叠交易日（2026-01-05 至 04-28，美伊冲突主导期）上对齐。
-五个主要发现：（一）信息吸收强烈且集中在"美国活跃时段对应的国内闭市段"——
-油价类市场信号与 INE 原油（SC）开盘跳空的相关达 0.75-0.86；但安慰剂检验显示
-原始吸收含有大量宏观共同因子成分（同一信号对机制无关的锰硅 +0.67、对股指
-−0.57），因此（二）才是承重检验：控制同窗口国际基准（USO/GLD/SLV）后，
-价格类头部配对的解释力消失（H1 偏零检验通过；metal×AG 与 fed×AU 两行
-边际幸存、待更长样本判别，§11.2 逐行登记），<b>在全部检验层级下稳定幸存的
-是中东冲突事件概率对 SC 的独立增量（t=3.68）</b>，与 SC 可交割中东油种的
-供给风险敞口一致；
-（三）"吸收后反转"只在油价主题成立（β₀=+507bp/σ，β₁₋₃≈−230..−330），
-分解显示反转的约八成来自 SC−USO 价差分量——是<b>升水回归</b>而非全球过度
-反应；（四）事件研究经答辩审计勘误重算后，原「新市场创建最强（+41bp）」<b>撤回</b>
-——该数字由视界标注错误（实为约 24 分钟）、E3 未符号化时吸收的冲突期漂移
-与无基线共同制造，修正版 E3 的 120 分钟 CAR 区间含零（§10b）；
-（五）方向之外，信号强度在样本内预测波动（t=4.4，R²=0.64），但展开窗
-样本外验证无增量（§12.5b）——风险通道降格为样本内证据。全部设计经 23 个智能体对抗审查修复
-17 项缺陷；消融（11 变体）与循环置换检验（p&lt;0.0005）支持核心结果非
-设定依赖、非统计巧合。样本短且由单一事件主导，所有结论为探索性。
-<br><br><b class="hd">第二部分（v3.1，第 14-18 节）</b>　针对第一部分的三个
-局限（样本、识别、功效），按《识别与统计功效 v3》研究规范重建管道，并经
-一轮外部评审修订（point-in-time 参数、episode 聚类、ex-ante 门控、LOFO
-公共因子）。四项主要结果：（一）自爬链上成交与结算事件把重叠样本延长至
-<b>125 个重叠交易日</b>（统一 tape 至 07-15 覆盖 127 个国内交易日，与
-期货库重叠 125 个）、结算覆盖提至 455/492；（二）第一部分的头部结论在
-样本翻倍与全部修复后保持并增强（mideast×SC 控制 USO 代理后 t 3.68→4.94；
-限定：控制集为 ETF 代理）；（三）<b>影响系数在当前样本下不可识别</b>——
-初版曾报告"中东 β 可识别（t&gt;4）"，episode 聚类修正揭示其识别变差的
-92% 来自伪重复（191 个市场事件仅对应 72 个独立收益日），该结论正式撤回，
-功效门控在修正口径下全线拦截；（四）两套信号对<b>次日方向</b>的 OOS 增量
-预测力整体不为正——唯一候选是豆粕 M（v3 信号 +4.9%，块自助 p≈0.001，但
-跨品种 BH-FDR q=0.12 且缺豆粕期货/USDCNH 控制）——Polymarket 信息的
-变现通道是闭市时段同期吸收与事件风险测量，不是隔日方向预测。
-<br><br><b class="hd">第三部分（分钟级信号检验篇）</b>　把测量下沉到
-分钟粒度：链上数据逐行定义与 22 条 edge cases、40 个信号（数值 / 量价
-组合 / 离散复杂统计 / 条件组合四族）的显式公式与归一化登记、频率 / 分布
-/ IC / ICIR / 双基线事件研究全套统计。核心发现：唯一跨品种稳健的结构是
-「120 分钟未兑现缺口」（C8：信念累积与价格累积之差，SC / AU / CU 六视界
-RankIC 全正、ICIR 0.5-0.6）；离散化组合整体弱于连续值结构，确认型组合
-跨品种一致为负。附写给期货研究员的 Polymarket 完全指南与 FAQ 24 问
-（篇内附录）。</div>
+{paper_abstract}
 
-{overview_html}
+{paper_html}
 
-<div class="toc"><b>细节篇目录</b><br>
-<b>总览篇（第一眼层）</b><br>
-<a href="#ov1">O.1 研究问题与总答案</a>　<a href="#ov2">O.2 数据一览</a>　
-<a href="#ov3">O.3 方法框架</a><br>
-<a href="#ov4">O.4 结论总表（分级）</a>　<a href="#ov5">O.5 审计与勘误记录</a>　
-<a href="#ov6">O.6 细节导航</a><br>
+<div class="toc"><b>目录</b><br>
+<b>论文正文</b><br>
+<a href="#p1">1 引言</a>　<a href="#p2">2 制度背景、数据与测量</a>　
+<a href="#p3">3 实证设计</a><br>
+<a href="#p4">4 主要结果（含表 1 结论汇总）</a>　
+<a href="#p5">5 稳健性、功效与勘误</a>　<a href="#p6">6 结论</a><br>
+<b>在线附录（细节篇）</b><br>
 
 <b>第一部分（v1.1，样本至 04-28）</b><br>
 <a href="#s1">1 引言</a><br><a href="#s2">2 制度背景</a><br>
@@ -428,8 +388,7 @@ RankIC 全正、ICIR 0.5-0.6）；离散化组合整体弱于连续值结构，�
 <a href="#part3">开篇与本篇导读</a><br>
 <a href="#ms1">§1 数据层：逐行定义与 edge cases</a><br>
 <a href="#ms2">§2-3 信号构造与 40 个公式</a><br>
-<a href="#ms43">§4 统计基本功：IC / 事件研究</a><br>
-<a href="#ms5">§5-6 组合结果与多重检验</a><br>
+<a href="#ms5">§4-5 统计基本功与组合结果</a>　<a href="#ms6">§6 多重检验</a><br>
 <a href="#mappA">篇内附录 A-E（Polymarket 指南 / FAQ / 词典 /
 方法论对照 / 复现）</a><br>
 <a href="#refs">参考文献</a><br>
@@ -978,6 +937,13 @@ Roadmap)</i>. https://x.com/RohOnChain/status/2017314080395296995 。中文编�
 §5.1 事件分类（E3）；未使用其站内套利机器（Bregman 投影 / Frank-Wolfe / 整数规划）。</li>
 <li>Jordà, Ò. (2005). Estimation and Inference of Impulse Responses by Local
 Projections. <i>American Economic Review</i>, 95(1).</li>
+<li>Wolfers, J., &amp; Zitzewitz, E. (2004). Prediction Markets.
+<i>Journal of Economic Perspectives</i>, 18(2), 107-126.</li>
+<li>Barclay, M. J., &amp; Hendershott, T. (2003). Price Discovery and Trading
+After Hours. <i>Review of Financial Studies</i>, 16(4), 1041-1073.</li>
+<li>Lou, D., Polk, C., &amp; Skouras, S. (2019). A Tug of War: Overnight
+Versus Intraday Expected Returns. <i>Journal of Financial Economics</i>,
+134(1), 192-213.</li>
 <li>Newey, W. &amp; West, K. (1987). A Simple, Positive Semi-definite,
 Heteroskedasticity and Autocorrelation Consistent Covariance Matrix.
 <i>Econometrica</i>, 55(3).</li>
