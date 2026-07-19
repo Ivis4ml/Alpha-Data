@@ -1473,6 +1473,26 @@ def appendix_a() -> str:
     "<td>基础费率多为 0（taker 费在部分市场）</td></tr>",
 ])}
 
+<p><b>实例</b>：以美联储议息决议市场为例（
+<a href="https://polymarket.com/event/fed-decision-in-september-762"
+target="_blank" rel="noopener">polymarket.com/event/fed-decision-in-september-762</a>，
+截图日期 2026-07-18，行情随时变动，仅作结构示意）。「9 月美联储决议」是
+一个<b>事件（event）</b>，其下拆成五个互斥结果各自独立的二元市场：不变息、
+降 25bp、降 50bp 以上、加 25bp、加 50bp 以上，这正是 A.1 表中「标的 =
+一个事件的结果」的具体样子，而非单一价格标的：</p>
+{_fig_file("f_polymarket_ui_fed_chart.png",
+     "「Fed Decision in September?」事件页：五个结果各自的 Yes 价格随时间"
+     "演化即隐含概率的时间序列（示例区间「不变」价格约 59%、「降 25bp」"
+     "约 37%，此消彼长）；右侧为下单面板（Buy Yes / Buy No，限价单）。")}
+<p>展开逐结果列表更直观地看到「价格即概率」与近似互补：</p>
+{_fig_file("f_polymarket_ui_fed_outcomes.png",
+     "五个互斥结果的 Buy Yes / Buy No 报价（美分）。「不变」Yes 59¢ 意味着"
+     "市场认为不变息概率约 59%；同一结果 Yes 价 + No 价接近 100¢（如「降"
+     "50bp 以上」2.2¢ + 97.9¢），价差主要来自买卖盘口点差，而非跨结果的"
+     "Yes 价直接求和：五个结果的 Yes 价加总本身即市场对「本次会议究竟落在"
+     "哪一档」的完整概率分布（约 2%+3%+59%+37%+1%≈102%，超出 100% 的部分"
+     "是做市商价差留出的套利空间，§A.4 铸造 / 合并机制会把明显偏离拉回）。")}
+
 <h3>A.2 价格怎么形成：订单簿、maker / taker 与滑点</h3>
 <p>与期货完全同构：任意时刻存在买卖挂单阶梯（限价单簿）。<b>maker</b> =
 挂单方（报价躺在簿上等成交，提供流动性）；<b>taker</b> = 吃单方（主动扫过
