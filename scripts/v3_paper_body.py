@@ -30,6 +30,60 @@ _SUMMARY_COLS = [
 ]
 
 
+def _fig_b64(name: str, caption: str) -> str:
+    """docs/figures 下 PNG 的 base64 自包含嵌入。"""
+    import base64
+    fp = _ROOT / "docs" / "figures" / name
+    if not fp.exists():
+        return ""
+    b = base64.b64encode(fp.read_bytes()).decode()
+    return (f'<figure><div class="figcard">'
+            f'<img src="data:image/png;base64,{b}" alt=""></div>'
+            f"<figcaption>{caption}</figcaption></figure>")
+
+
+def _summary_stats_block(rows: list[dict]) -> str:
+    """表 2b：公式与取值统计量 + 直方图（与表 2 同源 JSON 渲染）。"""
+    if not rows or "公式" not in rows[0]:
+        return ""
+    sig_name = ["C8", "C8", "C8", "C8", "C8",
+                "E1 上行跳", "盘中事件跳", "孤立事件跳"]
+    body_rows = []
+    for name, r in zip(sig_name, rows):
+        if r.get("取值均值", "不适用") != "不适用":
+            stats = (f"均值 {r['取值均值']}；中位数 {r['取值中位数']}；"
+                     f"标准差 {r['取值标准差']}；偏度 {r['取值偏度']}；"
+                     f"峰度 {r['取值峰度']}；{r['取值频率']}")
+        else:
+            stats = f"{r['取值valuecount']}；{r['取值频率']}"
+        body_rows.append(
+            f"<tr><td>{r['交易品种']}</td><td>{name}</td>"
+            f"<td>{r['公式']}</td><td>{stats}</td>"
+            f"<td>{r['品种全区间平均收益']}</td></tr>")
+    body = "\n".join(body_rows)
+    fig = _fig_b64(
+        "f_signal_summary_hist.png",
+        "表 2 信号的取值分布。(a)-(e) 五品种 C8 直方图（对数频数轴；"
+        "近对称、轻度重尾，偏度与峰度见表 2b）；(f) 三个离散信号的"
+        "value count（对数轴，上行 / 下行触发次数）。")
+    return f"""
+<div class="tbl-title">表 2b　信号公式、取值统计量与品种基准收益
+（与表 2 同源，读 signal_summary.json 渲染）</div>
+<div class="tablewrap"><table class="wraptext">
+<tr><th>交易品种</th><th>信号</th><th>公式</th>
+<th>取值统计量（连续：均值 / 中位数 / 标准差 / 偏度 / 峰度 / 频率；
+离散：value count / 频率）</th>
+<th>该品种整个时间区间内平均收益（无条件基准）</th></tr>
+{body}
+</table></div>
+<div class="tbl-note">读法：品种基准列给出样本期收对收累计与无条件
+1 / 3 / 10 分钟均值，表 2 中离散信号的条件平均收益应与同品种无条件
+均值对照解读（如 SC 盘中事件跳 10 分钟 +10.6 bp 对无条件
+−0.13 bp）；连续信号的分布形态见下图直方图。</div>
+{fig}
+"""
+
+
 def signal_summary_table() -> str:
     """表 2：按规定结构登记的信号汇总（构建时读 signal_summary.json）。
 
@@ -62,6 +116,8 @@ def signal_summary_table() -> str:
 为准）；离散信号"取 1"指上行触发，平均收益为毛值（bp、未扣成本）；
 月次数按样本 125 个交易日折算（约 5.95 个月）；"不适用"为该类
 信号不适用的字段的显式填充。</div>
+
+{_summary_stats_block(rows)}
 
 <p><b>信号的生成与实施（从原始数据到表 2 的信号值）。</b>六步
 流水线，每步给出实现脚本：（i）<b>链上采集</b>：订阅 Polygon 区块
