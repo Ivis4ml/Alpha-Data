@@ -15,6 +15,55 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+_SUMMARY_JSON = _ROOT / "docs" / "signal_summary.json"
+
+_SUMMARY_COLS = [
+    "交易品种", "信号定义", "信号频率", "信号月次数",
+    "连续信号IC（发出后1分钟）", "连续信号IC（发出后3分钟）",
+    "连续信号IC（发出后10分钟）",
+    "离散信号（取1）后1分钟平均收益", "离散信号（取1）后3分钟平均收益",
+    "离散信号（取1）后10分钟平均收益",
+]
+
+
+def signal_summary_table() -> str:
+    """表 2：按规定结构登记的信号汇总（构建时读 signal_summary.json）。
+
+    机器可读源与正文表同源渲染，两处必然一致；生成链与产物位置在
+    表注中完整展示。"""
+    if not _SUMMARY_JSON.exists():
+        return ""
+    rows = json.loads(_SUMMARY_JSON.read_text())
+    header = "".join(f"<th>{c}</th>" for c in _SUMMARY_COLS)
+    body = "\n".join(
+        "<tr>" + "".join(f"<td>{r.get(c, '')}</td>" for c in _SUMMARY_COLS)
+        + "</tr>" for r in rows)
+    return f"""
+<div class="tbl-title">表 2　已发现信号的标准结构登记（规定输出格式，
+共 {len(rows)} 条）</div>
+<div class="tablewrap"><table class="wraptext">
+<tr>{header}</tr>
+{body}
+</table></div>
+<div class="tbl-note"><b>生成与存放（完整链条）。</b>本表由
+<code>scripts/export_signal_summary.py</code> 生成：输入为
+<code>data/cn_futures/analysis/v3/defense/panel_{{品种}}.parquet</code>
+（分钟面板与前向收益）、同目录 <code>ic_table.parquet</code>
+（RankIC 总表）与 <code>analysis/v3/jump/jumps.parquet</code>
+（事件跳）；机器可读产物存放于 <code>docs/signal_summary.json</code>
+（受 Git 跟踪），本表在报告构建时直接读取该 JSON 渲染，正文与文件
+必然一致。重算命令：<code>python scripts/export_signal_summary.py
+&amp;&amp; python scripts/build_thesis_html.py</code>。口径：IC 为
+全时段 pooled RankIC（描述性登记，推断结论以附录 §12.14-12.15
+为准）；离散信号"取 1"指上行触发，平均收益为毛值（bp、未扣成本）；
+月次数按样本 125 个交易日折算（约 5.95 个月）；"不适用"为该类
+信号不适用的字段的显式填充。</div>
+"""
+
 PAPER_STYLE = """
 .paper h2{margin-top:2.2em}
 .paper .tbl-title{font-weight:700;margin:1.4em 0 .4em}
@@ -580,6 +629,8 @@ alpha</td>
 CW 为 Clark-West 检验统计量；q 为 FDR 校正后的 p 值；RV 为已实现
 波动率；tension 为族内定价失衡指标（附录 §15.2）。"附录 §N"指
 细节篇第一、二部分，"附录三 §N"指第三部分。</div>
+
+__SIGNAL_TABLE__
 
 <h2 id="p5">5　稳健性、功效、勘误</h2>
 

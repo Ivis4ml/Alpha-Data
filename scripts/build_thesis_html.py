@@ -357,7 +357,8 @@ def build() -> str:
     part2_html = v3_report_sections.build_part2(tex, fig_tag)
     appc_html = v3_report_sections.build_appendix_c()
     part3_html = v3_defense_report.build_embedded()
-    paper_html = v3_paper_body.build_paper()
+    paper_html = v3_paper_body.build_paper().replace(
+        "__SIGNAL_TABLE__", v3_paper_body.signal_summary_table())
     paper_abstract = v3_paper_body.ABSTRACT
     supp_edge = v3_supp_sections.sec_edge_cases()
     supp_sigstats = v3_supp_sections.sec_signal_stats()
@@ -1093,6 +1094,8 @@ v3_smart_flow.py</code>
 v3_c8_incremental.py / v3_jump_inference.py</code>
 ；（预注册族）：<code>v3_prereg_tests.py / fetch_cn_curve.py /
 v3_curve_family.py</code>
+；（结构化信号登记）：<code>export_signal_summary.py →
+docs/signal_summary.json →（构建时渲染为正文表 2）</code>
 · pytest 全量通过（数量见测试目录）· 第一部分处理流程经 23 个智能体从不同视角复核（修复 17 项缺陷），
 第三部分经 5 个视角复核（修复 71 项问题）· 分支
 feat/cn-futures-polymarket</div>
