@@ -988,6 +988,12 @@ def test_count_audit() -> pd.DataFrame:
          None),
         ("supp", "P2 截面检验（登记 6 格）", V3_DIR / "xsec" /
          "summary.parquet", None),
+        ("supp", "P3 钱包知情流 T1 锚配对", V3_DIR / "wallet" /
+         "tests_t1.parquet", None),
+        ("supp", "P3 钱包知情流 T2 吸收增量", V3_DIR / "wallet" /
+         "tests_t2.parquet", None),
+        ("supp", "P3 钱包知情流 T3 截面", V3_DIR / "wallet" /
+         "tests_t3.parquet", None),
     ]
     rows: list[dict] = []
     for part, family, path, flt in inventory:

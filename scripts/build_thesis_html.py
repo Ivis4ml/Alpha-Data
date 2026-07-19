@@ -368,6 +368,7 @@ def build() -> str:
     supp_evco = v3_supp_sections.sec_event_cooccur()
     supp_testcount = v3_supp_sections.sec_test_count()
     supp_xsec = v3_supp_sections.sec_xsec()
+    supp_wallet = v3_supp_sections.sec_wallet()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -908,6 +909,7 @@ suppression effect）且 n=37 对 13 个回归元自由度
 {supp_evco}
 {supp_testcount}
 {supp_xsec}
+{supp_wallet}
 
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>

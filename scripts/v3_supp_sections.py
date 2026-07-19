@@ -778,6 +778,98 @@ IC≈0）。</p>
 """
 
 
+# ------------------------------------- 第一部分 §12.13 钱包级知情流
+def sec_wallet() -> str:
+    """§12.13：P3 钱包级知情流（技能表 + 聪明钱加权检验）。"""
+    wdir = SUPP.parent / "wallet"
+    feat = ROOT / "data" / "polymarket" / "features"
+    if not (wdir / "tests_t1.parquet").exists():
+        return ""
+    tiers = pd.read_parquet(feat / "persistence_tiers.parquet")
+    meta = json.loads((feat / "wallet_skill_meta.json").read_text())
+    t1 = pd.read_parquet(wdir / "tests_t1.parquet")
+    t2 = pd.read_parquet(wdir / "tests_t2.parquet")
+    t3 = pd.read_parquet(wdir / "tests_t3.parquet").set_index("target")
+    wmeta = json.loads((wdir / "meta.json").read_text())
+
+    tier_rows = [
+        f"<tr><td>{r['tier']}</td><td>{r['n_wallets']:,}</td>"
+        f"<td>{r['spearman']:+.3f}</td></tr>"
+        for _, r in tiers.iterrows()]
+    tier_tab = _table(tier_rows, "<th>活跃度分层</th><th>钱包数</th>"
+                      "<th>前后半段秩相关</th>")
+
+    sf = t1[t1["signal"] == "SF"].set_index(["theme", "product"])
+    af = t1[t1["signal"] == "AF"].set_index(["theme", "product"])
+    rows = []
+    for (theme, prod), r in sf.iterrows():
+        a = af.loc[(theme, prod)]
+        thin = bool(r.get("thin"))
+        mark = "（thin）" if thin else ""
+        rk = (f"{_f(r['nzday_rank_r'], 3)} (p {r['nzday_rank_p']:.2f})"
+              if pd.notna(r.get("nzday_rank_r")) else "—")
+        rows.append(
+            f"<tr><td>{THEME_CN.get(theme, theme)} × {prod}{mark}</td>"
+            f"<td>{_f(r['t_x'], 2)}</td><td>{rk}</td>"
+            f"<td>{_f(a['t_x'], 2)}</td></tr>")
+    t1_tab = _table(rows, "<th>锚配对</th><th>smart 流 HAC t</th>"
+                    "<th>非零日秩相关</th><th>全量流 HAC t</th>", "wraptext")
+
+    cov = wmeta.get("smart_coverage", {})
+    cov_txt = "、".join(
+        f"{THEME_CN.get(k, k)} 中位 {v['med_abs_usd']:,.0f} 美元/窗"
+        for k, v in sorted(cov.items(),
+                           key=lambda kv: -kv[1]["med_abs_usd"])[:3])
+    pers = meta.get("persistence", {})
+
+    t2_rows = [
+        f"<tr><td>{THEME_CN.get(r['theme'], r['theme'])} × {r['product']}"
+        f"</td><td>{_f(r['t_price_z'], 2)}</td>"
+        f"<td>{_f(r['t_smart_z'], 2)}</td><td>{int(r['n'])}</td></tr>"
+        for _, r in t2.iterrows()]
+    t2_tab = _table(t2_rows, "<th>配对</th><th>价格 z 的 t</th>"
+                    "<th>smart 流 z 的 t</th><th>n</th>")
+
+    return f"""
+<h3>12.13 钱包级知情流：技能表与聪明钱加权检验（P3）</h3>
+<p>附录三 §5b 把孤立跳解读为私有信息（知情流）候选，但那是由跳变形态
+间接推断。链上逐笔带 taker 地址与市场结算结果，允许直接核算每个钱包的
+历史判断记录。第一阶段对全部 8.55 亿笔成交做钱包级核算（taker 侧，
+5,831 万个钱包 × 市场组合；按持有到结算的名义盈亏计，份额价格下限
+0.02 防长尾赔率爆炸，剔除结算后残余成交），第二阶段把成交流按时点化
+（PIT）技能分层后重跑窗口级检验。<b>事前登记 20 格</b>（锚配对预测
+16、吸收增量 2、截面 2），全部并入 §12.11 总账。</p>
+<p><b>发现一（数据层，正结果）：钱包技能真实存在且集中于活跃尾部。</b>
+把每个钱包的已结算市场按结算时间对半分组，前后半段单位成交盈亏的
+秩相关整体为 {pers.get('spearman', float('nan')):+.3f}
+（n = {pers.get('n_wallets', 0):,}），且随活跃度单调上升：</p>
+{tier_tab}
+<p>小样本钱包的相关被估计噪声稀释；大资金层（≥10 万美元）0.15 的
+持续性说明"判断力"是真实的钱包属性而非运气。这是本数据资产上首次
+建立的钱包级技能表（<code>wallet_market.parquet</code> 5,831 万行、
+<code>wallet_skill_monthly.parquet</code> 逐月 PIT 快照），可复用于
+后续任何知情流研究。</p>
+<p><b>发现二（信号层，否定结果）：聪明钱的窗口级方向流不含价格之外
+的增量。</b>技能前 10% 的钱包（PIT 逐月评定，活跃门槛 10 个已结算
+市场）只占登记主题成交额的 2-5%（{cov_txt}）。三组登记检验：</p>
+{t1_tab}
+<p>（thin = smart 层窗口流中位数低于 1,000 美元，展开 z 由尘埃值主导，
+线性 HAC t 不可靠，以非零日秩相关复核。）实体格（中东、俄乌、油价）
+的预测全部为零；三个高 t 格全部是 thin 稀疏伪影，秩检验不支持
+（p 0.24-0.65），与 §12.9 W12 的秩线背离同型，按纪律不作为发现。
+吸收增量与截面同样干净：</p>
+{t2_tab}
+<p>截面（E1 载荷、smart 流 z）：吸收 IC +0.165（HAC t 3.35，与价格
+信号的 §12.12 结构一致），日盘预测 IC {_f(float(t3.loc['r_day',
+'mean_ic']))}（t {_f(float(t3.loc['r_day', 'hac_t']), 2)}），为零。</p>
+<p><b>合读</b>：技能存在、但其信息在窗口尺度上已被价格吸收，聪明钱
+流没有留下可利用的残余。这与吸收主论一致：套利在分钟内把知情流聚合
+进价格，到开盘时流的身份不再携带额外信息。知情流若有可利用形态，
+应在分钟粒度（跳变前导流按钱包技能条件化），列为后续路径，本轮
+不再扩展检验。</p>
+"""
+
+
 # ------------------------------------- 第一部分 §12.11 检验总量核算
 def sec_test_count() -> str:
     """§12.11：全报告检验单元总账（多重性透明度）。"""
