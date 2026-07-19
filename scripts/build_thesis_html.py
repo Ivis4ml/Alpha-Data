@@ -413,10 +413,10 @@ def build() -> str:
 
 <div class="toc"><b>目录</b><br>
 <b>论文正文</b><br>
-<a href="#p1">1 引言</a>　<a href="#p2">2 制度背景、数据与测量</a>　
+<a href="#p1">1 引言</a>　<a href="#p2">2 背景、规则、数据</a>
 <a href="#p3">3 实证设计</a><br>
-<a href="#p4">4 主要结果（含表 1 结论汇总）</a>　
-<a href="#p5">5 稳健性、功效与勘误</a>　<a href="#p6">6 结论</a><br>
+<a href="#p4">4 主要结果（含表 1 结论汇总）</a>
+<a href="#p5">5 稳健性、功效、勘误</a>　<a href="#p6">6 结论</a><br>
 <b>在线附录（细节篇）</b><br>
 
 <b>第一部分（v1.1，样本至 04-28）</b><br>
@@ -438,7 +438,7 @@ def build() -> str:
 <a href="#ms1">§1 数据层：逐行定义与边界情形</a><br>
 <a href="#ms2">§2-3 信号构造与 40 个公式</a><br>
 <a href="#ms5">§4-5 统计基本功与组合结果</a>　<a href="#ms6">§6 多重检验</a><br>
-<a href="#mappA">篇内附录 A-E（Polymarket 指南 / FAQ / 词典 /
+<a href="#mappA">篇内附录 A-E（定价机制 / 数据边界 / 词典 /
 方法论对照 / 复现）</a><br>
 <a href="#refs">参考文献</a><br>
 <a href="#appA">总附录 A 窗口边界</a><br><a href="#appB">总附录 B 术语表</a><br>
