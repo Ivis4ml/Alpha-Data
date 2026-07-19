@@ -105,7 +105,7 @@ SIGNAL_DEFS: list[tuple[str, str, str, str, str, str, str]] = [
      "N1", "15min", "无（原始）"),
     ("N3", r"N3_t = z\left(\sum_{u=t-14}^{t}\sum_m \sigma_m D\,"
            r"\mathrm{USDC}\right)",
-     "签名主动流 z", "价格之外的「用钱投票」净强度",
+     "签名（signed）主动流 z", "价格之外的「用钱投票」净强度",
      "PM 逐笔", "15min", "滚动 z"),
     ("N4", r"N4_t = z(N2_t)", "累积创新 z",
      "时序归一化的基准形式（评审要求的 zscore 口径）", "N2", "15min", "滚动 z"),
@@ -221,7 +221,7 @@ SIGNAL_DEFS: list[tuple[str, str, str, str, str, str, str]] = [
      "E 事件", "60min", "符号型"),
     ("X6", r"X6_t = \mathrm{sgn}(\mathrm{flow}^{15}_t) \cdot E^{big}_t \cdot "
            r"\mathbf{1}\{|z(\mathrm{mom}^{15}_t)| < 0.5\}",
-     "大额流 + 期货未动", "大钱进场、期货未反应：知情流假说",
+     "大额流 + 期货未动", "大钱进场、期货未反应：知情流（informed flow）假说",
      "flow + E_big + 期货", "15min", "符号型"),
     ("X7", r"X7_t = \mathrm{sgn}(E_t) \cdot \mathbf{1}\{\mathrm{session}_t = "
            r"\mathrm{night}\}",
@@ -284,7 +284,7 @@ def summary_section(meta: dict) -> str:
 8 类、492 个市场）的逐笔成交聚合为分钟级信念创新，构造 <b>40 个信号</b>
 （10 数值 + 10 量价组合 + 10 离散复杂统计 + 10 组合条件），全部给出显式
 公式与时序归一化登记；对 1/2/3/5/10/15 分钟前向收益做 IC / RankIC / ICIR、
-按日盘夜盘分层、对离散事件做双基线事件研究；标签以 close-to-close 为主
+按日盘夜盘分层、对离散事件做双基线事件研究（event study）；标签以 close-to-close 为主
 口径、未来区间 VWAP 为对照。全流程防前视：信号分钟桶只含严格早于期货 K 线
 收盘戳的成交，归一化与聚合权重均只用滚动历史（含市场权重的时点化累计
 成交额）。</p>
@@ -380,7 +380,7 @@ def pm_data_section(meta: dict) -> str:
       '<th>价格</th><th>份额</th><th>USDC</th><th>中继腿?</th></tr>', ex_rows)}
 <div class="texnote">三条成交腿份额 2,196.87 + 26.51 + 4,966.93 =
 {total:,.2f}，与中继腿的 {total:,.2f} 恰好相等——同一笔卖单从 0.974 吃到
-0.973 两档买盘（订单簿与滑点机制见附录 A.2）。字段逐一解释见附录 C。</div>
+0.973 两档买盘（订单簿（order book）与滑点机制见附录 A.2）。字段逐一解释见附录 C。</div>
 
 <h3>1.2 p_event 与 D：统一到「事件视角」的换算</h3>
 <p>链上行只记录「某种代币值多少钱」；研究需要「事件发生的概率」。二元市场
@@ -519,7 +519,7 @@ def edge_cases_section() -> str:
          "常数价格被当作信号",
          "resolved_at 之后剔除（结算时刻取链上 ConditionResolution 事件，"
          "覆盖 455/492）", "37 个未结算市场本就无需截断"),
-        ("P6", "UMA 预言机（第三方裁决机制，附录 A.5）争议重报（同市场多次结算事件）",
+        ("P6", "UMA 预言机（oracle，第三方裁决机制，附录 A.5）争议重报（同市场多次结算事件）",
          "结算时刻取错", "取首次 ConditionResolution",
          "争议期内价格反映「预期裁决」"),
         ("P7", "准入前的低流动期（新市场几乎无人交易）",
@@ -1338,7 +1338,7 @@ def _jump_stage2() -> str:
                 f"<td>[{r['lo']:+.2f}, {r['hi']:+.2f}]</td>"
                 f"<td>{r['share_pos']:.0%}</td></tr>")
     stab = wrap("<tr><th>品种</th><th>跳所在时段</th><th>n</th>"
-                "<th>15′ 符号化响应(bp)</th><th>90% 自助 CI</th>"
+                "<th>15′ 符号化响应(bp)</th><th>90% 自助（bootstrap）CI</th>"
                 "<th>正占比</th></tr>", rows)
 
     cm = corr[corr["product"] == "M"].set_index("row")
@@ -1420,7 +1420,8 @@ def honest_section() -> str:
 <p><b>与主报告的关系</b>：本篇是测量与单信号层——回答「数据处理是否扎实、
 信号有没有信息含量、集中在什么结构」。「能否构成可交易 alpha、控制境外
 市场后是否仍有增量」由主报告（v2.1）的识别与功效框架回答；那边的结论
-（同期吸收强、次日方向样本外增量整体不为正、影响系数当前不可识别）不因本篇
+（同期吸收强、次日方向样本外（out-of-sample, OOS）增量整体不为正、
+影响系数当前不可识别）不因本篇
 的分钟级正 IC 而改变——分钟级 IC 反映「事件信息在分钟尺度渗入价格的
 过程」，与「隔日方向可预测」是两个命题，拼起来恰是完整故事：信息很快被
 吃掉，所以留不到明天。</p>

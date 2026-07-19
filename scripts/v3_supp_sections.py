@@ -247,11 +247,12 @@ def sec_signal_stats() -> str:
 n 的缺口来自"该窗口无活跃市场"（主要）、p_age 过时、结算后屏蔽与换月
 剔除（次要），逐配对的有效窗口数见产物
 <code>supp/signal_stats_window.parquet</code>；（ii）<b>均值全部接近 0</b>
-——logit 端点差天然近似鞅差；（iii）<b>重尾显著</b>——峰度普遍高于正态，
+——logit 端点差天然近似鞅差（martingale difference）；（iii）<b>重尾显著</b>——峰度普遍高于正态，
 |s|&gt;3σ 的极端窗口占比 1-4%，2026-03-06 的 +2.85（+4.8σ）是 q99 之外
 的极端观测，回归以 HAC 推断且 §6.3 散点确认非单点驱动；（iv）主题信号
 未做时序归一化——同期回归与相关对信号尺度不变；组合信号（§12.9）因涉
-阈值与跨主题可比性改用展开窗口 z 分数（min 20 日、仅 ≤t 信息）。</p>
+阈值与跨主题可比性改用展开窗口（expanding window）z 分数（min 20 日、
+仅 ≤t 信息）。</p>
 {_fig("f_supp_signal_dist.png",
       "头部四主题 × 三窗口的信号分布（125 交易日）。零附近高峰 = 多数窗口"
       "无新信息；重尾 = 少数事件窗口贡献绝大部分信号能量，这是 §10 事件"
@@ -395,7 +396,7 @@ def sec_event_correction() -> str:
                 f"<td>{r['uncond_bp']:+.2f}</td>"
                 f"<td><b>{r['excess_bp']:+.1f}</b></td></tr>")
     tab = _table(rows, "<th>事件</th><th>视界</th><th>符号化 CAR(bp)</th>"
-                 "<th>90% 自助 CI</th><th>无条件基线(bp)</th><th>超额(bp)</th>")
+                 "<th>90% 自助（bootstrap）CI</th><th>无条件基线(bp)</th><th>超额(bp)</th>")
     e3_120 = car[(car["type"] == "E3") & (car["h_min"] == 120)]
     e3_txt = ""
     if len(e3_120):
@@ -425,7 +426,7 @@ def sec_event_correction() -> str:
                        + "，更长视界衰减——与「几分钟内吸收完毕」的定性结论"
                        "一致。")
     return f"""
-<h3>10b 勘误与修正版事件研究（答辩审计触发）</h3>
+<h3>10b 勘误与修正版事件研究（event study，答辩审计触发）</h3>
 <p class="warn"><b>勘误</b>：v1.1 的事件研究实现有三处缺陷，按答辩篇
 标准全部修正并重算。（i）<b>视界标注错误</b>——原实现取事件后 25 根
 1 分钟 K 线却按 5 分钟 K 线口径标注为"0-120 分钟"，上图（§10）曲线的
@@ -451,7 +452,8 @@ def sec_rv_oos() -> str:
     r = pd.read_parquet(p).iloc[0]
     if not r.get("n_oos"):
         return ""
-    verdict = ("样本外增量为正且 CW 显著，波动通道在防前视口径下保留"
+    verdict = ("样本外（out-of-sample, OOS）增量为正且 CW 显著，"
+               "波动通道在防前视（look-ahead bias）口径下保留"
                if r["cw_t"] > 1.65 else
                "<b>样本外无增量</b>——|s_gap| 的波动预测力在展开窗逐日重估的"
                "防前视口径下消失。结论六据此降格：风险通道的 t=4.4 是样本内"
@@ -519,7 +521,7 @@ def sec_backtest_attrs() -> str:
 <p>审计补充的可交易性登记（导师清单：换手、容量、成本敏感度）。
 成本敏感性（年化 Sharpe，单边 bp）：</p>
 {cost_tab}
-<p>交易属性与参与率（容量代理）：</p>
+<p>交易属性与参与率（participation rate，容量代理）：</p>
 {attr_tab}
 <p>读法：S1/S2 为持续在场、逐日重定向的策略（年化换手最高，成本敏感
 性相应最陡），S3/S5 仅在信号 / 事件日进出；1 亿元名义仓位占 SC 日均
@@ -548,7 +550,7 @@ def sec_combo() -> str:
         ("共现", "W5 双 surprise 共现", "1{|zA|>1.5}·1{|zB|>1.5}·sign(zA+zB)",
          "两主题同日大 surprise 的离散事件"),
         ("交互", "W6 信号×波动状态", "z_pre · 1{|r_cc(t−1)|>展开中位}",
-         "高波动状态下信念创新是否更有效"),
+         "高波动状态下信念创新（belief innovation）是否更有效"),
         ("交互", "W7 信号×资金流", "z_gap · 展开分位秩(usdc_gap)",
          "重资金窗口的信念创新加权"),
         ("交互", "W8 信号×兄弟品种确认", "z_gap · 1{sign(r_night^sib)=sign(z_gap)}",
