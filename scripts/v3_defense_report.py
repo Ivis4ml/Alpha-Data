@@ -270,13 +270,13 @@ def summary_section(meta: dict) -> str:
 <h2 id="s0">0　执行摘要</h2>
 <p><b>研究问题。</b>Polymarket（用真金白银给「事件会不会发生」定价的链上
 预测市场）的分钟级信念变化，对中国商品期货的分钟级收益有没有可检验的信息
-含量？本包是该问题的<b>分钟级测量与单信号检验层</b>；日频窗口级的识别框架
+含量？本篇是该问题的<b>分钟级测量与单信号检验层</b>；日频窗口级的识别框架
 与方向性结论见主报告（cn_futures_polymarket_report.html v2.1），两者口径
 互补、结论一致。</p>
-<p><b>数据。</b>Polymarket 侧：全量链上成交 tape <b>855,614,453 笔 /
+<p><b>数据。</b>Polymarket 侧：全量链上逐笔成交记录 <b>855,614,453 笔 /
 约 265 亿美元 / 约 69 万个市场</b>（2022-11-21 至 2026-07-14；前段来自公开
 数据集，后段自建爬虫补齐，两段同构拼接、迁移期同质性实测通过）。期货侧：
-聚宽风格主力连续 1 分钟 bar，评估品种 SC / AU / AG / CU / M，样本
+聚宽风格主力连续 1 分钟 K 线，评估品种 SC / AU / AG / CU / M，样本
 2026-01-05 至 07-13 共 {meta['SC']['n_days']} 个交易日、逐品种
 {meta['M']['n_minutes']:,}（M）至 {meta['SC']['n_minutes']:,}（SC）个交易
 分钟。</p>
@@ -285,12 +285,12 @@ def summary_section(meta: dict) -> str:
 （10 数值 + 10 量价组合 + 10 离散复杂统计 + 10 组合条件），全部给出显式
 公式与时序归一化登记；对 1/2/3/5/10/15 分钟前向收益做 IC / RankIC / ICIR、
 按日盘夜盘分层、对离散事件做双基线事件研究；标签以 close-to-close 为主
-口径、未来区间 VWAP 为对照。全流程防前视：信号分钟桶只含严格早于期货 bar
+口径、未来区间 VWAP 为对照。全流程防前视：信号分钟桶只含严格早于期货 K 线
 收盘戳的成交，归一化与聚合权重均只用滚动历史（含市场权重的时点化累计
 成交额）。</p>
-<div class="finding"><span class="no">一</span><b>数据工程是本包最硬的
+<div class="finding"><span class="no">一</span><b>数据工程是本篇最扎实的
 部分。</b>每一行是什么、主动方向怎么来、p_event 怎么算、时差怎么映射、
-22 条 edge cases 怎么处理，全部在 §1 用真实数据逐条给出；方法论文档的数据
+22 条边界情形如何处理，全部在 §1 用真实数据逐条给出；方法论文档的数据
 检查清单逐项执行（§1.7）。</div>
 <div class="finding"><span class="no">二</span><b>全表唯一跨品种稳健的结构
 是 C8（120 分钟未兑现缺口：信念累积与价格累积之差）。</b>SC / AU / CU 三个
@@ -359,7 +359,7 @@ def pm_data_section(meta: dict) -> str:
                   r"\right), \qquad \mathrm{fwd}_k(T) = \ln C_{T+k} - \ln C_T")
 
     return f"""
-<h2 id="s1">1　数据层：定义、处理与 edge cases</h2>
+<h2 id="s1">1　数据层：定义、处理与边界情形</h2>
 
 <h3>1.1 Polymarket 成交数据：每一行是什么</h3>
 <p>Polymarket 是建在 Polygon（一条公共区块链，交易记录公开、不可篡改、
@@ -413,11 +413,11 @@ Yes 价 + No 价恒等于 1（由铸造 / 销毁套利钉住，真实数据见�
 ])}
 <p><b>时差映射只有一步且无歧义</b>：链上时间戳是 UTC 秒，北京时间 =
 UTC + 8（中国无夏令时，映射常数恒定；美东 DST 只影响主报告的美股 ETF
-对齐，与本包无关）。示例：<code>block_timestamp = 1782556154</code> → UTC
+对齐，与本篇无关）。示例：<code>block_timestamp = 1782556154</code> → UTC
 2026-06-27 10:29:14 → 北京 18:29:14（恰为国内闭市时段——闭市事件由主报告
-的窗口设计处理，本包只评估交易分钟）。</p>
-<p><b>与期货 bar 的对齐（防前视的关键一步）</b>：期货 1 分钟 bar 的时间戳
-是<b>收盘戳</b> T（21:31 的 bar 覆盖 21:30:00-21:30:59）。PM 侧按分钟桶
+的窗口设计处理，本篇只评估交易分钟）。</p>
+<p><b>与期货 K 线的对齐（防前视的关键一步）</b>：期货 1 分钟 K 线的时间戳
+是<b>收盘戳</b> T（21:31 的 K 线覆盖 21:30:00-21:30:59）。PM 侧按分钟桶
 [T−60s, T) 聚合、标签取右端 T——对齐后，<b>标签 T 的 PM 信号只含严格早于
 T 的成交</b>，前向收益从 T 起算，任何信息都不可能穿越 T：</p>
 {t_align}
@@ -428,7 +428,7 @@ T 的成交</b>，前向收益从 T 起算，任何信息都不可能穿越 T：
     "<tr><td>公开数据集段（HF daily_aligned）</td><td>601,934,424</td>"
     "<td>688,131</td><td>2022-11-21 19:50:09 … 2026-04-28 11:00:40</td>"
     "<td>$196.2 亿</td></tr>",
-    "<tr><td>自建爬虫段（扩展 tape）</td><td>253,680,029</td><td>528,540</td>"
+    "<tr><td>自建爬虫段（扩展逐笔成交记录）</td><td>253,680,029</td><td>528,540</td>"
     "<td>2026-04-28 11:04:48 … 2026-07-14 16:08:44</td><td>$69.1 亿</td></tr>",
     "<tr class='base'><td>合计</td><td><b>855,614,453</b></td>"
     "<td>约 69 万（两段市场有重叠）</td><td>3.6 年</td><td><b>$265.3 亿</b>"
@@ -469,8 +469,8 @@ T 的成交</b>，前向收益从 T 起算，任何信息都不可能穿越 T：
     "<td>大豆进口结构</td><td>贸易主题最直接的标的</td></tr>",
 ])}
 <p><b>数据来源</b>：聚宽风格主力连续（XX9999）分钟 CSV 本地重建（88 品种、
-350 万 bar，与交易所交易日历核对、断言测试覆盖），字段 open / high / low /
-close / volume（手）/ money（元）/ open_interest / contract；bar 时间戳为
+350 万根 K 线，与交易所交易日历核对、断言测试覆盖），字段 open / high / low /
+close / volume（手）/ money（元）/ open_interest / contract；K 线时间戳为
 收盘戳。<b>样本期为什么是 2026-01-05 至 07-13</b>：这是登记主题市场高密度
 存在期（映射主题在 2025 年前事件密度不足，见 §4.7 逐月图）与期货分钟库
 覆盖期的交集；单一状态期（美伊冲突主导）的外推局限在 §6 声明。源数据的三个陷阱（夜盘文件
@@ -483,7 +483,7 @@ close / volume（手）/ money（元）/ open_interest / contract；bar 时间�
     "<tr><td>CU 铜</td><td>21:00-次日 01:00</td><td>465</td></tr>",
     "<tr><td>M 豆粕</td><td>21:00-23:00</td><td>345</td></tr>",
 ])}
-<p><b>时段间隔的统一处理——连续分钟段规则</b>：相邻 bar 时间差 &gt; 1 分钟
+<p><b>时段间隔的统一处理——连续分钟段规则</b>：相邻 K 线时间差 &gt; 1 分钟
 即断开为新段；<b>前向收益一律不跨段</b>（置 NaN）。午间休市、10:15 小节、
 日夜盘边界、节假日全部被同一条规则自动处理，无需手工日历。逐品种规模：</p>
 {wrap('<tr><th>品种</th><th>交易分钟</th><th>交易日</th><th>连续段数</th>'
@@ -503,7 +503,7 @@ close / volume（手）/ money（元）/ open_interest / contract；bar 时间�
 
 def edge_cases_section() -> str:
     pm_cases = [
-        ("P1", "中继腿（交易所自身为对手方的汇总记账行）",
+        ("P1", "中继腿（relay leg，交易所自身为对手方的汇总记账行）",
          "成交量恰好翻倍、所有统计失真",
          "按 taker == 交易所合约地址剔除（§1.1 示例第 4 行）", "无"),
         ("P2", "negRisk 多选一市场（平台把互斥候选项打包发行的类型，如「谁当选」）",
@@ -546,12 +546,12 @@ def edge_cases_section() -> str:
          "量类信号可能偏高，结论中已降权"),
     ]
     fut_cases = [
-        ("F1", "夜盘 bar 存放在开始时刻次一自然日的文件里",
+        ("F1", "夜盘 K 线存放在开始时刻次一自然日的文件里",
          "周一文件永远无夜盘 → 误判缺数据",
          "重建时按时间戳重归属（夜盘归属下一交易日）+ 断言测试", "无"),
         ("F2", "午间休市 / 10:15 小节 / 日夜盘间隔",
          "跨间隔算收益 = 把休市当 1 分钟",
-         "连续分钟段规则（相邻 bar > 1 分钟断段，前向不跨段）", "无"),
+         "连续分钟段规则（相邻 K 线 > 1 分钟断段，前向不跨段）", "无"),
         ("F3", "主力合约换月（21:01 切换）",
          "跨合约拼接跳空被当作收益",
          "交易日内合约唯一；跨 21:00 边界的前向窗口已被段规则截断；日频侧"
@@ -567,18 +567,18 @@ def edge_cases_section() -> str:
          "无"),
         ("F6", "节假日 / 周末（期货休市而 PM 7×24 在交易）",
          "闭市期间信息丢失或错配",
-         "本包只评估交易分钟；闭市累积信息由主报告窗口设计（night/gap/day）"
+         "本篇只评估交易分钟；闭市累积信息由主报告窗口设计（night/gap/day）"
          "覆盖", "两套设计需对照阅读"),
         ("F7", "开盘 / 收盘分钟的撮合特殊性（集合竞价）",
-         "开盘 bar 含隔夜跳空信息",
+         "开盘 K 线含隔夜跳空信息",
          "X8 把开盘 30 分钟做成显式条件信号单独检验，不混入全样本",
          "首分钟未单独剔除"),
     ]
     align_cases = [
         ("A1", "时区（UTC vs 北京）", "错 8 小时 = 信号错到另一个时段",
          "PM 为 UTC 秒 + 8h 常数映射；中国无夏令时", "无"),
-        ("A2", "bar 收盘戳 vs 起始戳约定", "错 1 分钟 = 前视",
-         "本库 bar 为收盘戳（已核对）；PM 桶右端标签与之对齐，信号严格早于"
+        ("A2", "K 线收盘戳与起始戳约定", "错 1 分钟 = 前视",
+         "本库 K 线为收盘戳（已核对）；PM 桶右端标签与之对齐，信号严格早于"
          "前向窗", "无"),
         ("A3", "归一化窗口跨时段 / 跨日", "z 分数被时段结构污染",
          "z 窗口 4800 分钟跨段连续（约 10 个交易日）；另设 K2 分时段基准化"
@@ -610,7 +610,7 @@ def edge_cases_section() -> str:
 def quality_section(meta: dict) -> str:
     checks = [
         ("交易日数量是否完整",
-         f"{meta['SC']['n_days']} 个交易日与交易所日历核对（假日无 bar 为"
+         f"{meta['SC']['n_days']} 个交易日与交易所日历核对（假日无 K 线为"
          "预期）", "通过"),
         ("每日分钟数是否完整",
          f"SC 满额 555 分钟/日，实测日均 "
@@ -635,7 +635,7 @@ def quality_section(meta: dict) -> str:
          "PM 主题活跃分钟占比逐品种监控（§1.5），AG/CU/M 低活跃如实呈现",
          "通过"),
         ("行级可追溯",
-         "PM 行键 = 链ID_区块_日志序号；期货 bar 以 (contract, ts) 唯一",
+         "PM 行键 = 链ID_区块_日志序号；期货 K 线以 (contract, ts) 唯一",
          "通过"),
         ("全流程可复现",
          "任一表可由附录 E 命令重算；数据版本 = 爬虫游标 + 登记表版本",
@@ -665,7 +665,7 @@ def construction_section() -> str:
 <h3>2.1 归一化：为什么、怎么做、登记在哪</h3>
 <p>方法论文档把「因子未做归一化」列为算法层风险（量纲失真、极端值放大、
 跨时点不可比），推荐口径是<b>横截面</b>稳健归一化（同一时点跨股票的
-median-MAD）。本包是<b>单品种时序</b>场景（每个品种一条信号序列，无横
+median-MAD）。本篇是<b>单品种时序</b>场景（每个品种一条信号序列，无横
 截面），对应物是<b>时序滚动归一化</b>——同一原则（可比性、稳健性、无
 前视）在时间轴上的实现：</p>
 {t_z}
@@ -957,7 +957,7 @@ def ic_section() -> str:
     lab_html = (
         "<h3>4.5 标签口径稳健性：close vs 未来区间 VWAP</h3>"
         "<p>方法论文档推荐未来区间 VWAP 收益作标签（降单点噪声、贴近执行）。"
-        "本包主口径为 close-to-close，另算 VWAP 标签全表对照：15 分钟 "
+        "本篇主口径为 close-to-close，另算 VWAP 标签全表对照：15 分钟 "
         "RankIC 在两种标签下的横向相关为 "
         f"AU {corr_by.get('AU')}、M {corr_by.get('M')}、CU {corr_by.get('CU')}、"
         f"SC {corr_by.get('SC')}——排序结论对标签口径稳健；例外是 AG"
@@ -1000,7 +1000,7 @@ def ic_section() -> str:
         "<div class='callout'><b>读法与量级预期。</b>分钟级事件信号 RankIC "
         "量级 0.01-0.05 属正常水平（此类对比仅作数量级直觉：与日频横截面"
         "因子的口径不同，不可直接比较）。解读纪律与检验总量核算见 §6，"
-        "本节任何单格不作声称。</div>")
+        "本节不依据任何单一格结果作结论。</div>")
     return ("<h3 id='s43'>4.3　IC / RankIC / ICIR 与衰减曲线</h3>"
             "<p>定义：对每个信号与视界 k，取信号非零的分钟，计算信号值与 k "
             "分钟前向收益的 Pearson IC 与 Spearman RankIC；ICIR = 逐交易日 "
@@ -1165,7 +1165,7 @@ def combo_section() -> str:
             rows.append(f"<tr{cls}><td>{sig}</td><td>{prod}</td>"
                         f"<td>{f:.0f}</td>{cells}</tr>")
     return f"""
-<h2 id="s5">5　组合信号结果：好坏并陈</h2>
+<h2 id="s5">5　组合信号结果：完整呈现正负结果</h2>
 <p>X 族全部 10 个组合 × 5 品种的 50 行完整列出（无法计算的行以「—」占位并
 注明原因；M 只映射单一主题，共振类 X1 / X2 结构性不适用）。绿行 = 几乎
 全部视界为正，灰行 = 几乎全部为负或不可计算。<b>不挑好看的报</b>：</p>
@@ -1180,11 +1180,226 @@ def combo_section() -> str:
 为正（X2 于 SC 短视界、X9 于 M），远弱于其连续版 C8——同一假说，连续
 表达稳健、离散表达脆弱。（四）时段条件 X7 在 SC 六视界中五个为正（与 C8
 主线品种一致），在 AU / CU 为负；X3（事件 × 高波动）在 AU 长视界显著为负、
-在 M 为正但日均仅约 2 次触发——均不满足跨品种一致，不作声称。</div>
+在 M 为正但日均仅约 2 次触发——均不满足跨品种一致，不作结论。</div>
 <p>方法论意义：组合实验的价值不在找到「更强的信号」，而在<b>定位信息的
 载体</b>——本轮 40 信号 × 5 品种的完整矩阵指向同一个答案：信息在连续的
 未兑现缺口幅度（C8）里，不在离散事件及其组合里。这与主报告的窗口级结论
 （闭市吸收强、事后无剩余）一致。</p>
+"""
+
+
+def jump_section() -> str:
+    """§5b：J 族跳变因子（套利钉住恒等式后，水平跳变的信息含量）。"""
+    jdir = D.parent / "jump"
+    ic_p = jdir / "ic.parquet"
+    if not ic_p.exists():
+        return ""
+    ic = pd.read_parquet(ic_p)
+    meta = json.loads((jdir / "meta.json").read_text())
+    ev = pd.read_parquet(jdir / "event_groups.parquet")
+
+    defs = [
+        ("J1", "跳强度", "过去 120 分钟映射主题的跳数", "信息到达的频率"),
+        ("J2", "带方向跳幅和", "Σ orientation×Δℓ（120 分钟内的跳）",
+         "信念修正的净方向"),
+        ("J3", "跳能量", "Σ J²（240 分钟）", "信念变化中跳的贡献强度"),
+        ("J4", "前导流加权跳", "Σ J×preflow（跳桶前 60 分钟带方向净流比率）",
+         "知情流通道：有人先动手的跳"),
+        ("J5", "孤立跳幅和", "Σ J×1{同桶无同主题共跳}",
+         "私有信息候选：只有一个市场动"),
+        ("J6", "同步跳幅和", "Σ J×1{同桶 ≥1 共跳}",
+         "公共新闻通道：全族同时动"),
+        ("J7", "跳方向偏度", "(升级跳数−降级跳数)/总跳数（240 分钟）",
+         "跳的不对称"),
+    ]
+    drows = [f"<tr><td><b>{a}</b> {b}</td><td><code>{c}</code></td>"
+             f"<td>{d}</td></tr>" for a, b, c, d in defs]
+    dtab = wrap("<tr><th>因子</th><th>定义</th><th>动机</th></tr>", drows)
+
+    surv = ic[ic["q_bh"] < 0.1].copy()
+    surv = surv.reindex(surv["rank_ic"].abs()
+                        .sort_values(ascending=False).index)
+    consistent = []
+    for (product, sig), g in ic.groupby(["product", "signal"]):
+        if len(g) >= 5 and (np.sign(g["rank_ic"]) == np.sign(
+                g["rank_ic"].iloc[0])).all() and g["rank_ic"].abs().min() > 0:
+            both = g.dropna(subset=["rank_ic_hot", "rank_ic_cold"])
+            hot_ok = bool(len(both) > 0 and (
+                np.sign(both["rank_ic_hot"])
+                == np.sign(both["rank_ic_cold"])).all())
+            consistent.append((product, sig, float(g["rank_ic"].mean()),
+                               hot_ok))
+
+    def _f2(x: float, nd: int = 2) -> str:
+        return "—" if pd.isna(x) else f"{x:+.{nd}f}"
+
+    rows = []
+    for _, r in surv.head(14).iterrows():
+        if pd.isna(r["rank_ic_hot"]) or pd.isna(r["rank_ic_cold"]):
+            hc = (f"{_f2(r['rank_ic_hot'], 3)} / {_f2(r['rank_ic_cold'], 3)}"
+                  "（单侧样本不足）")
+        else:
+            same = np.sign(r["rank_ic_hot"]) == np.sign(r["rank_ic_cold"])
+            hc = (f"{r['rank_ic_hot']:+.3f} / {r['rank_ic_cold']:+.3f}"
+                  f"{'' if same else '<b>（反号）</b>'}")
+        rows.append(
+            f"<tr><td><b>{r['signal']}</b>×{r['product']}</td>"
+            f"<td>{int(r['h'])}′</td><td>{r['n']:,}</td>"
+            f"<td>{r['rank_ic']:+.4f}</td><td>{_f2(r['icir'])}</td>"
+            f"<td>{hc}</td>"
+            f"<td>{r['q_bh']:.4f}</td></tr>")
+    stab = wrap("<tr><th>因子×品种</th><th>视界</th><th>n</th>"
+                "<th>RankIC</th><th>ICIR</th><th>冲突期内/外</th>"
+                "<th>q(BH)</th></tr>", rows)
+
+    ev5 = ev[ev["h"] == 15]
+    erows = [
+        f"<tr><td>{r['group']}</td><td>{int(r['n'])}</td>"
+        f"<td>{r['signed_bp']:+.2f}</td><td>{r['share_pos']:.0%}</td></tr>"
+        for _, r in ev5.iterrows() if pd.notna(r["signed_bp"])
+    ]
+    etab = wrap("<tr><th>跳分组（SC，事后属性）</th><th>n</th>"
+                "<th>15 分钟符号化响应(bp)</th><th>正占比</th></tr>", erows)
+
+    strong = [(p, s, m, ok) for p, s, m, ok in consistent
+              if abs(m) >= 0.01]
+    strong.sort(key=lambda x: -abs(x[2]))
+    cons_txt = "、".join(f"{s}×{p}（均值 {m:+.3f}"
+                        f"{'，冲突期内外同号' if ok else ''}）"
+                        for p, s, m, ok in strong[:8]) or "无"
+    share_iso = meta["attr_stats"]["share_isolated"]
+    return f"""
+<h2 id="s5b">5b　J 族：跳变因子（审计后新增）</h2>
+<p>动机来自一个机制观察（正文 §2 与附录 A.4）：套利与撮合器内建的
+mint / merge 把 Yes + No 恒等式钉住，但对价格<b>水平</b>没有约束力，
+因此水平的跳变只剩两种解释——公共信息到达（信念突变）或私有信息入场
+（知情流）。跳是解释上最干净的对象，值得单独成族。跳检测沿用 E1 的
+注册口径（不引入新探测器自由度），共检出 <b>{meta['n_jumps']:,}</b>
+个跳（{meta['n_markets']} 个市场；孤立跳占比 {share_iso:.0%}）；每个
+跳带一个属性向量，其中前导流与同步性在跳发生时刻即可知（进实时因子），
+持续性与结算临近度用到事后信息（只进分组事件研究）：</p>
+{dtab}
+<p>归一化与检验协议与 N/C 族完全一致（滚动 z、逐日 IC 的 ICIR、
+{meta['family_cells']} 个格子作为一族做 BH-FDR 并计入检验总账）。
+族内 FDR 存活（q&lt;0.1）的前 14 行：</p>
+{stab}
+<p>六视界符号全部一致的（因子×品种）组合：{cons_txt}。</p>
+<p>按事后属性分组的跳后 SC 响应（双基线口径，基线为无条件
+|fwd|均值）：</p>
+{etab}
+<p><b>读法纪律</b>：J 族是在 C8 之后新增的第二个结构族，其全部格子
+已并入检验总账；单格 q 值不作结论，按"六视界同号 + 冲突期内外同号 +
+秩线一致"三条纪律筛选后余下的组合才进入候选；分组事件研究中
+"持续跳 / 回吐跳"与"临近结算"用了事后信息，只用于机制归因，不构成
+可交易声称。</p>
+{_jump_stage2()}
+"""
+
+
+def _fig_file(name: str, caption: str) -> str:
+    """磁盘 PNG 的 base64 内嵌（与主报告 fig_tag 同款）。"""
+    fp = ROOT / "docs" / "figures" / "v3" / name
+    if not fp.exists():
+        return ""
+    b = base64.b64encode(fp.read_bytes()).decode()
+    return (f'<figure><div class="figcard">'
+            f'<img src="data:image/png;base64,{b}" alt=""></div>'
+            f"<figcaption>{caption}</figcaption></figure>")
+
+
+def _jump_stage2() -> str:
+    """§5b.1-5b.2：时段剖面、同质化归并与跨族复合（第二阶段）。"""
+    jdir = D.parent / "jump"
+    sp = jdir / "session_response.parquet"
+    if not sp.exists():
+        return ""
+    sess = pd.read_parquet(sp)
+    comp = pd.read_parquet(jdir / "composite_ic.parquet")
+    corr = pd.read_parquet(jdir / "factor_corr.parquet")
+    meta2 = json.loads((jdir / "meta_integration.json").read_text())
+
+    order = ["盘中·日盘", "盘中·夜盘", "闭市·傍晚", "闭市·凌晨",
+             "闭市·周末"]
+    rows = []
+    for product in ("SC", "AU", "M"):
+        d = sess[(sess["product"] == product) & (sess["h"] == 15)]
+        d = d.set_index("session").reindex(
+            [s for s in order if s in set(d["session"])])
+        first = True
+        for sname, r in d.iterrows():
+            pc = (f'<td rowspan="{len(d)}"><b>{product}</b></td>'
+                  if first else "")
+            first = False
+            sig = (r["lo"] > 0) or (r["hi"] < 0)
+            star = " <b>✦</b>" if sig else ""
+            rows.append(
+                f"<tr>{pc}<td>{sname}{star}</td><td>{int(r['n'])}</td>"
+                f"<td>{r['signed_bp']:+.2f}</td>"
+                f"<td>[{r['lo']:+.2f}, {r['hi']:+.2f}]</td>"
+                f"<td>{r['share_pos']:.0%}</td></tr>")
+    stab = wrap("<tr><th>品种</th><th>跳所在时段</th><th>n</th>"
+                "<th>15′ 符号化响应(bp)</th><th>90% 自助 CI</th>"
+                "<th>正占比</th></tr>", rows)
+
+    cm = corr[corr["product"] == "M"].set_index("row")
+    j2n1 = float(cm.loc["J2", "N1"])
+    j2c8 = float(cm.loc["J2", "C8"])
+    xf_m = comp[(comp["product"] == "M") & (comp["h"] == 15)] \
+        .set_index("signal")["rank_ic"]
+    xf_sc = comp[(comp["product"] == "SC") & (comp["h"] == 15)] \
+        .set_index("signal")["rank_ic"]
+
+    return f"""
+<h3>5b.1 时段剖面：跳发生在盘中还是闭市，决定信息的变现路径</h3>
+<p>每个跳按品种交易时段分类（盘中日盘 / 盘中夜盘 / 闭市傍晚 / 闭市
+凌晨 / 闭市周末；夜盘收盘档位逐品种取实际值）。盘中跳的响应从下一
+分钟起测，闭市跳的响应从下一开盘分钟起测——后者度量的是"开盘跳空
+吸收之后还剩多少"：</p>
+{_fig_file("f_jump_panorama.png",
+           "J 族全景：(a) 逐月跳数按主题堆叠——1-4 月冲突高峰主导，"
+           "5 月后金属与美联储主题接棒；(b) 跳幅重尾分布；(c) 跳的"
+           "日内时刻分布（对 SC 时段着色）——跳集中于美东活跃时段，"
+           "恰落在国内闭市与夜盘；(d) SC 映射跳的时段构成。")}
+{stab}
+<p>（✦ = 90% 自助 CI 不含零。）三个结构清晰可读：（i）<b>SC 盘中·
+日盘跳 +9.75bp [3.7, 16.2]</b>——日盘进行中的 PM 跳来不及被跳空
+吸收，留下显著的分钟级正残余，是 J 族唯一 CI 不含零的正时段格；
+（ii）SC 的闭市跳（凌晨 / 周末）响应贴近零——闭市积累的跳在开盘
+跳空中定价殆尽，与第一部分"吸收发生在开盘瞬间"在跳级精确互证；
+（iii）AU 的盘中跳显著为<b>负</b>（夜盘 −2.31、日盘 −3.93，CI 均
+不含零）——金属主题以价格阈值类市场为主，跳是对期货已实现行情的
+记账确认（附录 §9 反向传导），确认之后期货小幅回吐。</p>
+{_fig_file("f_jump_session.png",
+           "SC 与 M 的跳后 15 分钟符号化响应（按时段，自助 CI）。")}
+
+<h3>5b.2 同质化归并与跨族复合：整合的正确形态</h3>
+<p><b>事件级归并</b>：同主题同桶共跳是同一事件的期限结构（折叠比
+{meta2['collapse_ratio']:.2f}，即平均每个事件 {meta2['collapse_ratio']:.1f}
+个市场同跳；多市场事件占 {meta2['multi_market_share']:.0%}）。把
+(主题, 桶) 折叠为事件级跳后重建因子，IC 与市场级几乎完全一致——
+J 族结果不依赖重复计数的膨胀，归并作为稳健性检验通过。</p>
+<p><b>因子相关结构</b>：J 族与 N/C 族在分钟粒度<b>接近正交</b>
+（M 面板 J2 与 N1 相关 {j2n1:+.3f}、与 C8 相关 {j2c8:+.2f}）——
+跳是稀疏事件、N1 是连续流，两者携带不同的信息维度；市场层面的
+同质化（共跳、期限结构抱团）在因子层面已被聚合与归一化吸收：</p>
+{_fig_file("f_jump_corr.png",
+           "SC 与 M 面板的因子相关矩阵（N/C/J 代表信号）。跨族相关"
+           "普遍低；族内（如 J1 与 J2、J5）相关高——复合应跨族做、"
+           "族内择一。")}
+<p><b>跨族等权复合 XF = mean(z(C8), z(N4), z(J2))</b>（成分为三族
+既有头部、等权、无样本内拟合）：15 分钟 RankIC 在 M 上为
+{xf_m.get('XF', float('nan')):+.3f}（最强单因子 J2
+{xf_m.get('J2', float('nan')):+.3f}），SC 上为
+{xf_sc.get('XF', float('nan')):+.3f}（最强单因子 C8
+{xf_sc.get('C8', float('nan')):+.3f}）——<b>等权复合在两个品种上都
+不敌各自的头部单因子</b>，因为最优结构因品种而异（SC 的信息在缺口
+结构、M 的信息在跳）。诚实结论：整合的正确形态不是等权平均，而是
+按品种选择结构；而"选哪个"若在样本内做就是过拟合，须交给第二部分的
+ex-ante 门控 OOS 框架（§18.1 待办 (d) 扩充为含 J 族的结构选择）。</p>
+{_fig_file("f_jump_composite.png",
+           "左：M 上复合 XF 与成分的 IC 视界曲线——XF 被弱成分稀释，"
+           "不及 J2；右：M 上事件级折叠（JE2）与市场级（J2）几乎重合"
+           "——归并不改变结论。")}
 """
 
 
@@ -1194,7 +1409,7 @@ def honest_section() -> str:
 <p><b>检验总量核算</b>：40 信号 × 6 视界 × 5 品种 = 1,200 个设计格子（实际
 可计算 1,128，其余触发不足）；加上日盘 / 夜盘分层（ic_table 共 3,254 行）
 与标签对照（752 个相关），全文约 4,000 个相关系数。5% 名义水平下期望约
-200 个偶然「显著」。因此本文档不以任何单格显著性作声称，只认三类证据：
+200 个偶然「显著」。因此本文档不以任何单格显著性作结论，只认三类证据：
 （i）同一信号跨视界符号一致；（ii）跨品种符号一致；（iii）|ICIR| 持续。</p>
 <p><b>三类证据相互不独立，权重有序</b>：六个视界的前向收益相互嵌套（1 分钟
 收益是 15 分钟收益的一部分），跨视界一致性偏乐观；SC 与 AU 共享同一事件流
@@ -1202,15 +1417,15 @@ def honest_section() -> str:
 重叠的品种对为准（如 SC 对 M）；|ICIR|（逐日独立估计的稳定性）最接近独立
 复验，权重最高。C8 同时满足三类且含 SC-M 对，是唯一按此纪律站住的
 结构。</p>
-<p><b>与主报告的关系</b>：本包是测量与单信号层——回答「数据处理是否扎实、
+<p><b>与主报告的关系</b>：本篇是测量与单信号层——回答「数据处理是否扎实、
 信号有没有信息含量、集中在什么结构」。「能否构成可交易 alpha、控制境外
 市场后是否仍有增量」由主报告（v2.1）的识别与功效框架回答；那边的结论
-（同期吸收强、次日方向 OOS 增量整体不为正、影响系数当前不可识别）不因本包
+（同期吸收强、次日方向样本外增量整体不为正、影响系数当前不可识别）不因本篇
 的分钟级正 IC 而改变——分钟级 IC 反映「事件信息在分钟尺度渗入价格的
 过程」，与「隔日方向可预测」是两个命题，拼起来恰是完整故事：信息很快被
 吃掉，所以留不到明天。</p>
-<p><b>本包的可辩护结论</b>：（一）数据层：855M 行链上 tape 的行级定义、
-主动方向、概率换算、时差映射与 22 条 edge cases 全部显式处理或显式声明；
+<p><b>本篇可辩护的结论</b>：（一）数据层：8.55 亿行链上逐笔成交记录的行级定义、
+主动方向、概率换算、时差映射与 22 条边界情形全部显式处理或显式声明；
 （二）信号层：40 个信号全部有公式、归一化登记、频率 / 分布 / 缺失率 /
 极值率；（三）检验层：唯一跨品种稳健的结构是 C8（未兑现缺口，SC / AU / CU
 六视界全正、ICIR 0.5-0.6、冲突段内外同号），量级 0.01-0.03；时段与标签
@@ -1291,7 +1506,8 @@ usdc 加权 vwap 与 logit 截断吸收。</div>
 <h3>A.5 市场生命周期：谁出题、谁结算、怎么争议</h3>
 <p><b>创建</b>：Polymarket 官方按事件热点创建市场并撰写结算条款（判定
 标准、数据源、截止时刻）。同一现实事件常被做成一族市场（不同截止日 / 不同
-阈值）——这是 §1.6 P11 伪重复问题的来源。<b>结算</b>：由 UMA 乐观预言机
+阈值）——这是 §1.6 P11 伪重复问题的来源。</p>
+<p><b>结算</b>：由 UMA 乐观预言机
 裁决：任何人可提交结果并质押保证金，争议期内无人挑战即生效，有挑战则升级
 投票；裁决写入链上 <code>ConditionResolution</code> 事件（我们结算时刻的
 来源，覆盖 455/492 个登记市场）。<b>争议</b>：极少数市场重报，我们取首次
@@ -1431,9 +1647,9 @@ def appendix_c() -> str:
     "<tr><td><code>market_slug</code></td><td>市场 URL 名（主题规则匹配的"
     "输入）</td></tr>",
 ])}
-<h3>C.3 研究面板（本包，逐品种逐分钟）</h3>
+<h3>C.3 研究面板（本篇，逐品种逐分钟）</h3>
 {wrap_text('<tr><th>字段</th><th>含义</th></tr>', [
-    "<tr><td><code>ts / trade_date / session / seg</code></td><td>bar 收盘戳"
+    "<tr><td><code>ts / trade_date / session / seg</code></td><td>K 线收盘戳"
     "（北京）/ 交易日 / 日夜盘 / 连续分钟段号</td></tr>",
     "<tr><td><code>r1 / fwd_k / fwd_vwap_k</code></td><td>1 分钟收益 / k 分"
     "钟前向收益（close 与 VWAP 双标签，段内有效）</td></tr>",
@@ -1457,7 +1673,7 @@ def appendix_d() -> str:
          "面板含 OHLCV / money + session / seg / locked + vwap 代理；PM 侧"
          "另有五个主题聚合量", "落实"),
         ("时间轴统一：分钟索引；休市不当连续时间差",
-         "连续分钟段规则（§1.5）；所有窗口按 bar 序而非墙钟", "落实"),
+         "连续分钟段规则（§1.5）；所有窗口按 K 线顺序而非墙钟时间", "落实"),
         ("缺失值：不前向填充成交量；缺失打标签",
          "期货零成交 vwap 置 NaN；PM 无成交分钟创新 = 0（语义：无新信息）并"
          "有活跃占比监控", "落实（语义差异已说明）"),
@@ -1471,7 +1687,7 @@ def appendix_d() -> str:
         ("严禁未来函数",
          "桶右端标签 / shift(-k) / 滚动统计 / PIT 单元测试", "落实"),
         ("切分：严禁随机打散，按时间滚动",
-         "本包为单信号测量（无训练步）；主报告 Layer 5 用展开窗口 OOS",
+         "本篇为单信号测量（无训练步）；主报告第五层用展开窗口样本外检验",
          "落实"),
         ("因子：显式公式 + 参数 + 元信息登记",
          "40 信号全部有公式卡片 + 元信息总表（§3.0）", "落实"),
@@ -1486,7 +1702,7 @@ def appendix_d() -> str:
         ("评价指标：IC / RankIC / ICIR / 衰减 / 缺失率 / 极值率",
          "全部输出（§4.1 / 4.3）；衰减 = 六视界曲线", "落实"),
         ("分层收益 / 多空组合 / 换手 / 成本后收益",
-         "本包为信号测量层、不含组合构建；成本后回测见主报告 §12.6",
+         "本篇为信号测量层、不含组合构建；成本后回测见主报告 §12.6",
          "由主报告承接"),
         ("分状态表现（时段等）",
          "日盘 / 夜盘分层 IC（§4.4）+ X7 / X8 时段条件信号", "落实"),
@@ -1494,13 +1710,13 @@ def appendix_d() -> str:
          "事件研究报告 n 与月频；主报告对候选品种做影响点删除检验", "落实"),
         ("数据质量检查清单（12 条）", "§1.7 逐条执行", "落实"),
         ("过拟合治理 / 多重检验",
-         "§6 检验总量核算 + 单格不作声称纪律 + 主报告 BH-FDR / 功效门控",
+         "§6 检验总量核算 + 不以单格作结论的纪律 + 主报告 BH-FDR / 统计功效门槛",
          "落实"),
         ("工程：模块解耦、可复现、可追溯",
          "build（数据 + 信号 + 检验）与 report（渲染）分离；产物全 parquet "
          "可复算；行级可追溯（§1.7）", "落实"),
         ("可交易性 / T+1 / 卖出框架",
-         "期货 T+0 无此约束；可交易性仅做涨跌停代理监控；执行层超出本包范围",
+         "期货 T+0 无此约束；可交易性仅做涨跌停代理监控；执行层超出本篇范围",
          "范围外（已声明）"),
     ]
     body = [
@@ -1536,8 +1752,8 @@ def appendix_e() -> str:
 基线）</td></tr>
 <tr><td><code>label_robustness.parquet</code></td><td>close vs VWAP 标签
 RankIC 对照</td></tr>
-<tr><td><code>p_event_stats.parquet</code></td><td>p_event 成交分布（全
-tape + 逐主题）</td></tr>
+<tr><td><code>p_event_stats.parquet</code></td><td>p_event 成交分布（全部逐笔成交
++ 逐主题）</td></tr>
 <tr><td><code>history_monthly.parquet</code></td><td>2022-11 起逐月主题事件
 频率</td></tr>
 <tr><td><code>example_tx_{raw,clean}.parquet</code></td><td>§1.1 真实示例
@@ -1581,11 +1797,11 @@ def build() -> str:
 <div class="toc"><b>目录</b><br>
 <b>主线</b><br>
 <a href="#s0">0 执行摘要</a><br>
-<a href="#s1">1 数据层：定义、处理与 edge cases</a><br>
+<a href="#s1">1 数据层：定义、处理与边界情形</a><br>
 <a href="#s2">2 信号构造：归一化与四族设计</a><br>
 <a href="#s3">3 信号定义全集（40 个公式）</a><br>
 <a href="#s4">4 单信号评估：统计基本功</a><br>
-<a href="#s5">5 组合信号结果（好坏并陈）</a><br>
+<a href="#s5">5 组合信号结果（完整呈现正负结果）</a><br>
 <a href="#s6">6 多重检验与诚实结论</a><br>
 <b>附录（supplement）</b><br>
 <a href="#appA">A Polymarket 完全指南</a><br>
@@ -1603,6 +1819,7 @@ def build() -> str:
 {ic_section()}
 {event_section(meta)}
 {combo_section()}
+{jump_section()}
 {honest_section()}
 {appendix_a()}
 {appendix_b()}
@@ -1617,9 +1834,9 @@ PART3_BANNER = """
 <div class="part" id="part3"><div class="kicker">第三部分 · 分钟级信号检验篇</div>
 <div class="pt">Polymarket 事件数据的分钟级信号库、统计与 IC 检验</div>
 <p>第一部分回答「窗口级传导结构是什么」，第二部分回答「哪些效应可识别」，
-本篇下沉到<b>分钟粒度</b>：数据逐行定义与 22 条 edge cases、40 个信号的
+本篇下沉到<b>分钟粒度</b>：数据逐行定义与 22 条边界情形、40 个信号的
 显式公式与归一化登记、频率 / 分布 / IC / ICIR / 事件研究的全套统计基本功，
-以及组合信号的完整（好坏并陈）结果。<b>本篇为自包含单元：篇内的节号
+以及组合信号的完整正负结果。<b>本篇为自包含单元：篇内的节号
 （§0-§6）与附录号（附录 A-E）均指本篇内部</b>；全报告层面的参考文献与
 总附录（窗口边界 / 术语表 / v3 产物）在本篇之后。本篇亦有独立版本
 （v3_signal_defense.html），内容同源生成。口径注：本篇主题聚合权重为
@@ -1630,6 +1847,7 @@ PART3_BANNER = """
 
 def build_embedded() -> str:
     """供主报告嵌入的第三部分：锚点加 m 前缀、交叉引用改写为部内引用。"""
+    pub_style.setup(cn_font=True)
     meta = json.loads((D / "meta.json").read_text())
     body = (
         PART3_BANNER
@@ -1643,6 +1861,7 @@ def build_embedded() -> str:
         + ic_section()
         + event_section(meta)
         + combo_section()
+        + jump_section()
         + honest_section()
         + appendix_a()
         + appendix_b()

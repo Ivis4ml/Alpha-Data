@@ -11,6 +11,7 @@ currentColor，随页面深浅主题变色），供 build_thesis_html 嵌入。
 from __future__ import annotations
 
 import io
+import itertools
 import re
 
 import matplotlib
@@ -22,6 +23,8 @@ PALETTE = {
     "violet": "#4a3aa7", "red": "#e34948", "magenta": "#e87ba4", "orange": "#eb6834",
     "ink": "#1a1a19", "ink2": "#52514e", "grid": "#e3e1da",
 }
+
+_SVG_ID_COUNTER = itertools.count(1)
 
 
 def setup(cn_font: bool = True) -> None:
@@ -97,6 +100,16 @@ def tex_svg(formula: str, fontsize: int = 13, display: bool = True) -> str:
         matplotlib.rcParams["mathtext.fontset"] = prev
     svg = buf.getvalue().decode()
     svg = svg[svg.index("<svg"):]
+    # Matplotlib 每次都会生成 figure_1、patch_1、字体字形等相同 id。多个公式
+    # 内联到同一 HTML 后，SVG 的 <use href="#…"> 会按整页全局 id 解析，可能
+    # 错引前一个公式。为每次渲染加唯一前缀，并同步改写所有内部引用。
+    prefix = f"tex{next(_SVG_ID_COUNTER)}-"
+    svg_ids = set(re.findall(r'id="([^"]+)"', svg))
+    for svg_id in svg_ids:
+        new_id = f"{prefix}{svg_id}"
+        svg = svg.replace(f'id="{svg_id}"', f'id="{new_id}"')
+        svg = svg.replace(f'href="#{svg_id}"', f'href="#{new_id}"')
+        svg = svg.replace(f'url(#{svg_id})', f'url(#{new_id})')
     # 颜色交给 CSS（glyph path 无自带 fill，根元素 currentColor 向下继承，
     # 随页面深浅主题变色）；高度改用 em 使其随正文字号缩放。
     svg = svg.replace("<svg ", '<svg fill="currentColor" ', 1)

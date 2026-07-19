@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import re
 import sys
 from pathlib import Path
 
@@ -49,6 +50,56 @@ def b64(rel: str) -> str:
 def fig_tag(rel: str, caption: str) -> str:
     return (f'<figure><div class="figcard"><img src="data:image/png;base64,{b64(rel)}" '
             f'alt=""></div><figcaption>{caption}</figcaption></figure>')
+
+
+def _split_long_paragraphs(html: str, limit: int = 240) -> str:
+    """在不破坏内联标签的前提下，按句子拆分过长段落。"""
+
+    def split(match: re.Match[str]) -> str:
+        attrs, content = match.groups()
+        visible = re.sub(r"<[^>]+>", "", content)
+        if len(re.sub(r"\s+", " ", visible).strip()) <= limit:
+            return match.group(0)
+
+        # 只在所有内联标签均已闭合的位置切句，避免拆断 <b>/<code>/<a>。
+        sentences: list[str] = []
+        sentence = ""
+        depth = 0
+        for token in re.split(r"(<[^>]+>)", content):
+            if not token:
+                continue
+            if token.startswith("<"):
+                sentence += token
+                if token.startswith("</"):
+                    depth = max(0, depth - 1)
+                elif (not token.startswith(("<!", "<?", "<br", "<img", "<wbr"))
+                      and not token.rstrip().endswith("/>")):
+                    depth += 1
+                continue
+            for char in token:
+                sentence += char
+                if depth == 0 and char in "。！？；":
+                    sentences.append(sentence)
+                    sentence = ""
+        if sentence.strip():
+            sentences.append(sentence)
+        if len(sentences) == 1:
+            return match.group(0)
+        groups: list[str] = []
+        current = ""
+        for sentence in sentences:
+            current_len = len(re.sub(r"<[^>]+>", "", current))
+            sentence_len = len(re.sub(r"<[^>]+>", "", sentence))
+            if current and current_len + sentence_len > limit:
+                groups.append(current)
+                current = sentence
+            else:
+                current += sentence
+        if current:
+            groups.append(current)
+        return "\n".join(f"<p{attrs}>{group.strip()}</p>" for group in groups)
+
+    return re.sub(r"<p([^>]*)>(.*?)</p>", split, html, flags=re.DOTALL)
 
 
 def ablation_table_html() -> str:
@@ -163,8 +214,8 @@ def surrogate_tables_html() -> tuple[str, str]:
     """N1 充分性表与 N4 LP-IV 表。"""
     s1 = pd.read_parquet(DEEP / "surrogate_sufficiency.parquet").dropna(subset=["c_t"])
     head = ("<tr><th>主题 × 品种</th><th>n</th><th>c（无控制）</th>"
-            "<th>单一最优代理后</th><th>全谱 12 资产后 c′</th>"
-            "<th>恒等式闭合</th><th>全谱 R²</th></tr>")
+            "<th>单一最优代理后</th><th>12 项资产控制后 c′</th>"
+            "<th>恒等式闭合</th><th>完整控制集 R²</th></tr>")
     rows = []
     for r in s1.itertuples(index=False):
         live = abs(r.c_prime_full_t) >= 2
@@ -349,7 +400,7 @@ def build() -> str:
             r"\qquad F_{1st} = t_a^2"),
     ]
 
-    return f"""<meta charset="utf-8">
+    html = f"""<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Polymarket 事件概率与中国商品期货：传导、吸收与升水回归</title>
 <style>{STYLE}{v3_defense_report.STYLE_EXTRA}{v3_paper_body.PAPER_STYLE}</style>
@@ -359,8 +410,6 @@ def build() -> str:
 <h1>Polymarket 事件概率与中国商品期货：<br>跨市场传导、时段吸收与升水回归</h1>
 
 {paper_abstract}
-
-{paper_html}
 
 <div class="toc"><b>目录</b><br>
 <b>论文正文</b><br>
@@ -379,21 +428,23 @@ def build() -> str:
 <a href="#s11">11 国际基准控制（核心检验）</a><br><a href="#s12">12 消融与扩充稳健性实验</a><br>
 <a href="#s13">13 结论、局限与推广</a><br>
 <b>第二部分（v3，样本至 07-13）</b><br>
-<a href="#s14">14 数据扩展：自爬链上管线</a><br>
+<a href="#s14">14 数据扩展：自建链上采集流程</a><br>
 <a href="#s15">15 测量层：滤波、投影与事件几何</a><br>
-<a href="#s16">16 双门控与影响层</a><br>
+<a href="#s16">16 双重功效门槛与影响层</a><br>
 <a href="#s17">17 增量预测与吸收复核</a><br>
 <a href="#s18">18 第二部分结论</a><br>
 <b>第三部分（分钟级信号检验，篇内编号）</b><br>
 <a href="#part3">开篇与本篇导读</a><br>
-<a href="#ms1">§1 数据层：逐行定义与 edge cases</a><br>
+<a href="#ms1">§1 数据层：逐行定义与边界情形</a><br>
 <a href="#ms2">§2-3 信号构造与 40 个公式</a><br>
 <a href="#ms5">§4-5 统计基本功与组合结果</a>　<a href="#ms6">§6 多重检验</a><br>
 <a href="#mappA">篇内附录 A-E（Polymarket 指南 / FAQ / 词典 /
 方法论对照 / 复现）</a><br>
 <a href="#refs">参考文献</a><br>
-<a href="#appA">附录 A 窗口边界</a><br><a href="#appB">附录 B 术语表</a><br>
-<a href="#appC">附录 C v3 术语与产物</a></div>
+<a href="#appA">总附录 A 窗口边界</a><br><a href="#appB">总附录 B 术语表</a><br>
+<a href="#appC">总附录 C v3 术语与产物</a></div>
+
+{paper_html}
 
 <h2 id="s1">1　引言</h2>
 <p><b>动机。</b>Polymarket 是一个用真金白银给"事件会不会发生"定价的市场：
@@ -406,8 +457,8 @@ def build() -> str:
 COMEX 全天候交易，任何"Polymarket 领先国内期货"的发现都可能只是"国际期货领先
 国内期货"的转述（研究规范 §0 约束 1）。因此本文的核心检验不是"有没有相关"，
 而是<b>控制国际基准之后还剩下什么</b>（第 11 节）。</p>
-<p><b>贡献。</b>（1）一套经对抗审查的数据管线：国内期货主力连续分钟库（含夜盘
-归属、换月处理）与 Polymarket 逐笔到国内时段信号的转换（防前视、去 bounce、
+<p><b>贡献。</b>（1）一套经系统审查的数据处理流程：国内期货主力连续分钟库（含夜盘
+归属、换月处理）与 Polymarket 逐笔成交到国内时段信号的转换（防前视、消除买卖价跳动、
 时点化准入）；（2）时段级传导结构的完整刻画（哪个闭市段吸收哪类信息）；
 （3）"吸收后反转"的精确判据与机制判别（升水回归 vs 过度反应）；（4）三类
 Polymarket 事件的定义及其事后响应度量。</p>
@@ -445,18 +496,18 @@ YES 价格 p ∈ (0,1) 即市场隐含概率。本文数据（daily_aligned 层�
 记 admit_ts——用全窗口流动性筛选会让 1 月的样本构成依赖 4 月才实现的成交，
 属于用未来信息选样）。</p>
 <h3>3.2 国内期货分钟数据（收益侧）</h3>
-<p>聚宽风格主力连续（<code>XX9999.交易所</code>）分钟 bar，88 品种、125 个
-交易日、350 万根。三个必须处理的源数据事实：（i）<b>夜盘 bar 存放在其开始时刻
+<p>聚宽风格主力连续（<code>XX9999.交易所</code>）分钟 K 线，88 品种、125 个
+交易日、350 万根。三个必须处理的源数据事实：（i）<b>夜盘 K 线存放在其开始时刻
 次一自然日的文件里</b>——周六文件是周五夜盘，周一文件从不含夜盘，凭周一文件
 抽查会误判"没有夜盘数据"；重建时按"夜盘归属下一交易日"从时间戳重新归属，
-并以"周一交易日必须包含上周五 21:01 至周六 02:30 的 bar"作为测试断言。
-（ii）主力合约切换发生在 21:01（交易日边界），故交易日内合约唯一；主力连续为
+并以"周一交易日必须包含上周五 21:01 至周六 02:30 的 K 线"作为测试断言。</p>
+<p>（ii）主力合约切换发生在 21:01（交易日边界），故交易日内合约唯一；主力连续为
 数据商预拼，换月日的跨合约收益（隔夜、收对收）是换月跳空而非可实现收益，
 一律置缺失并打 <code>roll</code> 标记。（iii）成交量/额为逐分钟增量，
-持仓量为水平值，时间戳为北京时间 bar 收盘戳。</p>
+持仓量为水平值，时间戳为北京时间 K 线收盘戳。</p>
 <h3>3.3 国际基准（控制变量）</h3>
 <p>仓库美股分钟库的 ETF：USO（WTI 原油）对 SC、GLD（黄金）对 AU、SLV（白银）
-对 AG。分钟 bar 含盘前盘后（美东 04:01-20:00），换算北京时间后恰好覆盖国内
+对 AG。分钟 K 线含盘前盘后（美东 04:01-20:00），换算北京时间后恰好覆盖国内
 闭市窗口，可以构造与信号窗口<b>完全同界</b>的基准收益。局限：USO 是 ETF
 （含展期成本），非 Brent/WTI 期货本身；作日频/窗口相关控制足够。</p>
 
@@ -464,7 +515,7 @@ YES 价格 p ∈ (0,1) 即市场隐含概率。本文数据（daily_aligned 层�
 
 <h2 id="s4">4　信号构造：从一笔成交到一个信号（五步推导）</h2>
 
-<div class="step"><span class="tag">第 1 步 · 15 分钟桶内去 bounce 聚合</span><br>
+<div class="step"><span class="tag">第 1 步 · 15 分钟桶内消除买卖价跳动</span><br>
 把逐笔按 15 分钟分桶（桶为左闭右开 [b−15′, b)，<b>标签取右端</b>——标签 T 的桶
 只含严格早于 T 的成交，这是全文防前视的基石）。桶内按 taker 方向分成两堆，
 各取成交额加权中位数，再取两向平均：
@@ -500,7 +551,7 @@ s_gap_pm + s_night + s_gap_am + s_day 恰等于两日收盘间的总 logit 变�
 每个市场事前注册方向 orientation ∈ {{+1, −1}}：升级类（us-strikes-iran）+1，
 降级类（ceasefire）−1——于是"停火概率上升"贡献负信号，与"袭击概率上升"的
 正信号同向可加。注意陷阱：<code>ceasefire-end</code>（停火结束）是升级事件，
-v1.0 曾被 ceasefire 子串误伤反号，对抗审查修正（v1.1）。</div>
+v1.0 曾被 ceasefire 子串误判并反号，系统审查后修正（v1.1）。</div>
 
 <div class="step"><span class="tag">第 5 步 · 主题聚合</span><br>
 主题信号 = Σ orientation×√usdc×s / Σ √usdc（分母取权重绝对值），等权为
@@ -556,7 +607,7 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
 <p>开盘前信号（s_night+s_gap）对当日日盘、全日信号对未来 1/3/5 日累计收益，
 68 项检验，BH-FDR q&lt;0.1 的 10 项<b>全部为负系数</b>（信号升→其后回落），
 无一正向。且信号累积窗从 3 小时拉到 120 小时（下图），预测相关都在 ±0.17
-内無稳定形态——<b>吸收发生在开盘瞬间，之后没有剩余可预测性</b>。</p>
+内无稳定形态——<b>吸收发生在开盘瞬间，之后没有剩余可预测性</b>。</p>
 {fig_tag("deep/e_horizon_curve.png",
          "窗口敏感性：截止 09:00 往回累积 K 小时的信号对当日日盘收益的相关，"
          "K 从 3h 到 120h。全程弱且无形态。")}
@@ -626,18 +677,18 @@ Pearson p——后者对重叠窗口反保守，v1.0 的错误之一）排序控
 <div class="texnote"><b>E3</b>：登记市场的第一笔成交（无公式，事件时刻 = first_ts）。</div>
 <div class="texnote">MAD₄₈ = 过去 48 桶中位数绝对偏差；1.4826·MAD 是稳健 σ 估计。</div>
 <p>对落在 SC 夜盘内的事件，取事件后累计收益，按 orientation×sign(Δℓ)
-符号化后平均；置信带 = 500 次事件重抽自助法。<b>勘误（答辩审计发现）</b>：
-v1.1 实现实际取事件后 25 根 1 分钟 bar（约 24 分钟）却按 5 分钟 bar 口径
+符号化后平均；置信带 = 500 次事件重抽自助法。</p>
+<p><b>勘误（答辩审计发现）</b>：
+v1.1 实现实际取事件后 25 根 1 分钟 K 线（约 24 分钟）却按 5 分钟 K 线口径
 标注为"0-120 分钟"，且 E3 的符号在代码中硬编码 +1、未按上述声明实现——
-下图横轴的真实视界是 0-24 分钟；修正版（视界改真实 120 根 1 分钟 bar、
+下图横轴的真实视界是 0-24 分钟；修正版（视界改真实 120 根 1 分钟 K 线、
 E3 按声明符号化、增加无条件基线）见 §10b。</p>
+<div class="callout"><b>引用限制：</b>下图仅保留作审计记录，包含已确认的实现与
+标注错误，不得作为研究结论引用。有效结果以紧随其后的 §10b 修正版为准。</div>
 {fig_tag("deep/g_event_study.png",
          "【勘误：本图为 v1.1 原版，横轴的真实视界是 0-24 分钟（非 0-120 分钟），"
-         "且 E3 未符号化；修正版数字见 §10b，原结论四已撤回。】"
-         "E3 新市场创建最强（n=241；120 分钟 +41bp，CI [28,56]）——新市场上线"
-         "这件事本身携带方向信息：上什么行权价、开盘定多少概率，反映做市者对"
-         "局势的判断。E1 价格跳仅 +3.6bp（信息几分钟内吸收完的旁证）；E2 纯放量"
-         "不带方向，不显著。")}
+         "且 E3 未符号化；修正版数字见 §10b，原结论四已撤回。图中数值仅用于"
+         "复核旧版错误，不代表本文有效结论。")}
 
 {supp_eventfix}
 
@@ -649,29 +700,29 @@ E3 按声明符号化、增加无条件基线）见 §10b。</p>
 问题：β<sub>s</sub> 控制 b<sub>w</sub> 后是否存活。</div>
 <h3>11.2 结果</h3>
 {intl_html}
-<p>表格读法（蓝色 t = 控制后死亡，橙色 = 幸存）：</p>
+<p>表格读法（蓝色 t = 控制后不再显著，橙色 = 控制后仍显著）：</p>
 <ul>
 <li><b>H1 偏零检验通过</b>：metal_price×AU 夜盘 t 2.24→0.72，GLD 解释 R²=0.98
 ——金价类 PM 市场在 GLD 之外没有任何信息。研究规范把它设计成"若显著则先查
-管线错误"的健全性检验，结果符合先验，也反证管线对齐正确。</li>
+流程错误"的有效性检查，结果符合先验，也从反面支持时间对齐正确。</li>
 <li><b>价格类头部配对无增量</b>：oil_price×SC 夜盘 2.68→−1.07、gap
 4.89→1.88——"will-oil-hit-X"类市场就是 USO 的镜像。限定：此为 75 天样本
 结论，扩展样本复核下 oil×SC·gap 控 USO 后重新显著（t=3.68，§17.3 调和段），
 "无增量"不能作为跨样本结论外推。</li>
-<li><b>中东事件概率幸存且增强：mideast×SC gap t 2.53→3.68</b>（R² 0.20→0.62，
+<li><b>中东事件概率的增量关联仍显著且增强：mideast×SC gap t 2.53→3.68</b>（R² 0.20→0.62，
 USO 自身 t=5.64 同在）。控制了国际油价当期变动后，中东冲突概率仍解释 SC 开盘
 跳空。经济解释：INE 原油的可交割油种是中东油（阿曼、巴士拉轻质等），中东供给
 风险对 SC 交割篮子的冲击本就大于对美国轻质油 WTI——事件概率携带的是"油种
 错位"的风险溢价信息。</li>
-<li><b>两行边际幸存，如实登记（审计补）</b>：metal_price×AG·night 控 SLV 后
+<li><b>另有两行仍为边际显著，如实登记（审计补）</b>：metal_price×AG·night 控 SLV 后
 t=+2.66（n=43，小样本标记）、fed_policy×AU·gap 控 GLD 后 t=+2.12（§12.8
-全谱后 +2.31）。AG 行在第二部分扩展样本复核中消失（§17.3，t=0.72）；
-fed×AU 属事件类、与 H1 不冲突，但使"唯有中东幸存"的强表述不成立——
-摘要与结论二已收紧为"中东是全部检验层级下最稳定的幸存配对"，这两行的
+完整资产集控制后 +2.31）。AG 行在第二部分扩展样本复核中不再显著（§17.3，t=0.72）；
+fed×AU 属事件类、与 H1 不冲突，但使"唯有中东仍显著"的强表述不成立——
+摘要与结论二已收紧为"中东是全部检验层级下最稳定的配对"，这两行的
 终判留给更长样本。</li>
 </ul>
 {fig_tag("deep/i1_intl_control.png",
-         "控制前（蓝）后（橙）的信号系数 t 值。多数配对控制后死亡；"
+         "控制前（蓝）后（橙）的信号系数 t 值。多数配对控制后不再显著；"
          "mideast×SC·gap 是唯一控制后反而增强的。")}
 <h3>11.3 反转机制判别：升水回归，不是全球过度反应</h3>
 <p>把 SC 收对收拆成两个可加分量，对每个分量分别做局部投影：</p>
@@ -708,8 +759,8 @@ SM 锰硅、IF 股指）上，若"吸收"是油价特异的传导，安慰剂应
 <b>结果并不干净</b>：oil 信号对锰硅 +0.67、对股指 −0.57，mideast 对玉米 +0.36。
 这说明样本期的原始吸收含有大量<b>宏观共同因子</b>（风险开关：冲突升级 →
 商品普涨、股指下跌）成分。诚实的推论是：未控共同因子的吸收系数不能解读为
-品种特异的传导，<b>第 11 节的国际基准控制才是承重检验</b>——mideast×SC 的
-增量（t=3.68）正是在剔除共同因子（USO）后幸存的部分。</p>
+品种特异的传导，<b>第 11 节的国际基准控制才是核心检验</b>——mideast×SC 的
+增量（t=3.68）是在控制共同因子代理（USO）后仍显著的部分。</p>
 <p><b>循环置换检验</b>：把信号序列整体循环移位（保留各自的自相关结构、只破坏
 两序列的日历同步）2,000 次，真实 |r| 在零分布中的位置给出经验 p 值：
 oil×SC 真实 0.73 对零分布 99 分位 0.29（p&lt;0.0005）；mideast×SC 真实 0.44 对
@@ -752,7 +803,7 @@ Polymarket 不领先国际市场，国内市场在开市时段也无显著滞后
 
 {supp_rvoos}
 <h3>12.6 可交易性：策略回测、Sharpe 与杠杆</h3>
-<p>把幸存的信号构造成四个<b>信号窗口严格早于持仓窗口</b>的策略：
+<p>把通过前述筛选的信号构造成四个<b>信号窗口严格早于持仓窗口</b>的策略：
 S1 隔夜信号（09:00 前已知）→ 持有日盘；S2 傍晚闭市信号（21:00 前已知）→
 持有夜盘；S3 反转：−sign(全日信号) 于收盘进场、持有 3 日（重叠三档）；
 S5 事件：E3 新市场创建桶收盘进场、持有 120 分钟。成本按单边 4bp（SC 一跳
@@ -799,8 +850,8 @@ HAR-lite 模型（|s_gap| 与昨日 RV）给出（系数全样本估计，存在
 （3）与商品侧同构的例外再次出现：<b>mideast 对 IF/IM 在控制 SPY 后直接效应
 反而更清晰（c′ t=+3.45 / +2.15，中介占比约 52-58%）</b>——中东风险在国内开盘
 被定价的部分，约一半经由美股、另一半是美股未捕捉的直接分量。商品对照行同表：
-oil×SC 控后死亡（52% 中介 + 剩余不显著）、fed×AU 中介 63%、
-mideast×SC 直接分量幸存（t=3.68）。</p>
+oil×SC 控制后不再显著（52% 中介 + 剩余不显著）、fed×AU 中介 63%、
+mideast×SC 直接分量仍显著（t=3.68）。</p>
 {fig_tag("deep/m1_chain.png",
          "(a) 各链总效应 c（蓝）与控制美股后的直接效应 c′（橙）；"
          "(b) c 显著的链的中介占比。约半数效应经美股中介，mideast 主题在"
@@ -816,16 +867,17 @@ mideast×SC 直接分量幸存（t=3.68）。</p>
 <p><b>代理充分性判据</b>（Prentice 1989 替代终点判据的跨市场版）：
 "美股张成空间是 PM 信息的充分统计量"等价于</p>
 {_TEX[12]}
-<p>检验量是全谱回归 y ~ s + B 中 s 的系数 c′。它与单变量总效应 c 之间满足
+<p>检验量是完整资产集回归 y ~ s + B 中 s 的系数 c′。它与单变量总效应 c 之间满足
 遗漏变量恒等式（线性代数上精确成立，表中"恒等式闭合"列为数值验证，
 应为机器零）：</p>
 {_TEX[13]}
 {suff_html}
-<p><b>读法</b>：<b>mideast×IF 在含 FXI/ASHR 的全谱下 c′ t=+4.64</b>——中东事件
+<p><b>读法</b>：<b>mideast×IF 在含 FXI/ASHR 的完整资产集控制下 c′ t=+4.64</b>——中东事件
 概率对沪深300期货开盘跳空的直接分量，不在包括美国交易的中国 ETF 在内的任何
-美股角度里；mideast×SC 同样幸存（+3.23）。<b>诚实标注</b>：oil×SC 的全谱 c′
+美股角度里；mideast×SC 同样仍显著（+3.23）。</p>
+<p><b>限制说明</b>：oil×SC 的完整资产集 c′
 （+2.47）高于单一 USO 后（+1.88）属共线抑制效应且 n=37 对 13 个回归元自由度
-紧张，不作结论；us_china_trade×IM 全谱后死亡（+1.97 边界）。</p>
+紧张，不作结论；us_china_trade×IM 在完整资产集控制后不再显著（+1.97，处于边界）。</p>
 {fig_tag("deep/n1_sufficiency_path.png",
          "最小充分代理集路径：前向贪心逐个加入美股资产（标注该步入选资产），"
          "纵轴为 PM 信号残余直接效应 |t(c′)|。mideast×IF（蓝）加入 QQQ/GLD/FXI 后"
@@ -858,10 +910,10 @@ Polymarket 在国内闭市期间积累的信息在开盘跳空与夜盘中被系
 （p&lt;0.0005）。但安慰剂显示原始吸收大半是宏观共同因子（对锰硅 +0.67、
 股指 −0.57），品种特异的部分须由结论二的控制检验认定。</div>
 <div class="finding"><span class="no">二</span>控制国际基准后，价格类头部配对
-无增量（H1 通过；metal×AG·night 与 fed×AU·gap 两行边际幸存——前者在扩展
+无增量（H1 通过；metal×AG·night 与 fed×AU·gap 两行边际显著——前者在扩展
 样本复核中消失、后者待判别，§11.2），<b>中东事件概率对 SC 开盘跳空保留独立
 增量（t=3.68，扩展样本 4.94）</b>——与 INE 可交割中东油种的供给风险敞口
-一致。这是本研究在全部检验层级（国际控制、全谱代理、扩展样本）下最稳定的
+一致。这是本研究在全部检验层级（国际控制、完整资产集代理、扩展样本）下最稳定的
 "Polymarket 独有信息"证据；另注：扩展样本上 oil×SC·gap 亦重新显著
 （§17.3），"价格类无增量"限于原 75 天样本。</div>
 <div class="finding"><span class="no">三</span>"吸收后反转"（β₀&gt;0 且 β_h&lt;0）
@@ -891,15 +943,15 @@ SPY 冲击弱）；显著的链约半数效应经美股中介，mideast 主题�
 （IF/IM）两侧都保留控制美股后的直接分量——事件概率的独立信息一致地指向
 "美股未完全捕捉的地缘供给/风险敞口"。</div>
 <div class="finding"><span class="no">九</span>代理充分性框架（12.8）把上述结论
-推到最强形式：mideast 的直接分量在<b>含 FXI/ASHR 的 12 资产全谱</b>下于 SC
-（t=3.23）与 IF（t=4.64）两侧同时幸存——美股整个张成空间都不是该信息的充分
+推到最强形式：mideast 的直接分量在<b>含 FXI/ASHR 的 12 项资产控制集</b>下于 SC
+（t=3.23）与 IF（t=4.64）两侧同时显著——所选美股资产的共同变动不足以完全解释
 代理；LP-IV 显示国内对"事件驱动的 USO 变动"传导强于一般变动
 （δ_IV=1.13 vs β_OLS=0.89，强工具 F=42）。</div>
 <h3>13.2 局限</h3>
 <ul>
 <li>约 75 个重叠交易日、单一美伊冲突主导；滚动相关显示吸收强度在事件热度
 消退后减弱。所有结论是"在此情景内"的条件陈述。</li>
-<li>USO 是 ETF 而非期货本身；日盘时段无美股 bar，日盘窗口的控制缺失。</li>
+<li>USO 是 ETF 而非期货本身；日盘时段无美股 K 线，日盘窗口的控制缺失。</li>
 <li>主力连续为数据商预拼；方向先验为判断性注册（两处违背如实报告：
 mideast×AU 避险失效、trade×M 反号）。</li>
 <li>多处小样本（n=24-43）HAC 显著性需打折；聚合权重含轻微样本内信息
@@ -933,7 +985,7 @@ episode 复现——这是把"探索性"升级为"结论"的必要条件。</li>
 <li>Roan (@RohOnChain). <i>The Math Needed for Trading on Polymarket (Complete
 Roadmap)</i>. https://x.com/RohOnChain/status/2017314080395296995 。中文编译版
 （MrRyanChi / ChainCatcher）见仓库 docs/。本文借用其 §2 KL 几何（logit 坐标）、
-§3.4 边界发散（截断）、§1 蕴含约束（聚类解读）、§4.2 VWAP（去 bounce 聚合）、
+§3.4 边界发散（截断）、§1 蕴含约束（聚类解读）、§4.2 VWAP（消除买卖价跳动）、
 §5.1 事件分类（E3）；未使用其站内套利机器（Bregman 投影 / Frank-Wolfe / 整数规划）。</li>
 <li>Jordà, Ò. (2005). Estimation and Inference of Impulse Responses by Local
 Projections. <i>American Economic Review</i>, 95(1).</li>
@@ -953,14 +1005,25 @@ Rate. <i>JRSS-B</i>, 57(1).</li>
 仓库文档 <code>docs/DATA_GUIDE.md</code>、<code>docs/mapping_taxonomy.md</code>（v1.1）。</li>
 <li>Clark, T. &amp; West, K. (2007). Approximately Normal Tests for Equal
 Predictive Accuracy in Nested Models. <i>Journal of Econometrics</i>, 138(1).</li>
-<li>研究规范《Polymarket 信息到中国期货收益：识别、统计功效与门控式研究框架
+<li>研究规范《Polymarket 信息到中国期货收益：识别、统计功效与分阶段准入研究框架
 v3.0》（2026-07-16），仓库
 <code>research/Polymarket_中国期货预测_识别与统计功效_v3.pdf</code>；实现说明
 <code>docs/v3_framework_results.md</code>；数据来源说明
-<code>docs/POLYMARKET_CRAWL.md</code>（自爬链上管线）。</li>
+<code>docs/POLYMARKET_CRAWL.md</code>（自建链上采集流程）。</li>
+
+<li id="ref-dataset">TimeSeventeen. <i>Polymarket-v1：全量链上成交数据集</i>.
+Hugging Face dataset（数据集卡片记载 daily_aligned 层的中继腿剔除与字段
+口径）；附随论文 arXiv:2606.04217。</li>
+<li id="ref-ctfex">Polymarket. <i>CTF Exchange：撮合合约与开发者文档</i>.
+github.com/Polymarket/ctf-exchange 与 docs.polymarket.com（撮合支持
+普通对手方成交、互补买单铸造与互补卖单销毁三种模式；OrderFilled 事件
+含撮合合约作为对手方的中继腿记账）。</li>
+<li id="ref-gnosis">Gnosis. <i>Conditional Tokens Framework 文档</i>.
+docs.gnosis.io/conditionaltokens（splitPosition 与 mergePositions 的
+铸造 / 销毁语义，即 1 USDC 与一对互补结果代币的相互转换）。</li>
 </ol>
 
-<h2 id="appA">附录 A　窗口边界（以 SC 为例，夜盘收盘 02:30）</h2>
+<h2 id="appA">总附录 A　窗口边界（以 SC 为例，夜盘收盘 02:30）</h2>
 <div class="tablewrap"><table>
 <tr><th>窗口</th><th>北京时间（交易日 t）</th><th>对应美东</th><th>信号列</th><th>匹配收益</th></tr>
 <tr><td>傍晚闭市 gap_pm</td><td>t−1 日 15:00 → 21:00</td><td>约 02:00-08:00</td>
@@ -976,7 +1039,7 @@ v3.0》（2026-07-16），仓库
 （主力合约切换）的跨合约收益（r_gap_pm、收对收）置缺失。无夜盘品种：
 night/gap_am 无定义，闭市整段计入 gap_pm。</p>
 
-<h2 id="appB">附录 B　术语表</h2>
+<h2 id="appB">总附录 B　术语表</h2>
 <div class="tablewrap"><table>
 <tr><th>术语</th><th>含义</th></tr>
 <tr><td>logit / ℓ(p)</td><td>ln(p/(1−p))，把概率映到 (−∞,+∞) 的对数赔率</td></tr>
@@ -1005,11 +1068,13 @@ v3_build_tape.py → v3_measurement.py → v3_baseline_extended.py → v3_layer5
 v3_figures.py → build_thesis_html.py</code>
 ；（第三部分）：<code>v3_defense_build.py → v3_defense_report.py</code>
 ；（答辩级补充）：<code>v3_part12_supplement.py → v3_supp_sections.py</code>
-· 74 项 pytest · 第一部分管线经 23 智能体对抗审查（17 项缺陷修复），
-第三部分经 5 视角对抗审查（71 项发现修复）· 分支
+· 74 项 pytest · 第一部分处理流程经 23 个智能体从不同视角复核（修复 17 项缺陷），
+第三部分经 5 个视角复核（修复 71 项问题）· 分支
 feat/cn-futures-polymarket</div>
 </main>
 """
+    polished = _split_long_paragraphs(html)
+    return "\n".join(line.rstrip() for line in polished.splitlines()) + "\n"
 
 
 def main() -> int:

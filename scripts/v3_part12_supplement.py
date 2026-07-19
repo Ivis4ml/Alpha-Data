@@ -978,6 +978,14 @@ def test_count_audit() -> pd.DataFrame:
          "noncontrol"),
         ("supp", "交互回归", SUPP_DIR / "interaction_reg.parquet", None),
         ("supp", "tension 门控", SUPP_DIR / "tension_gate.parquet", None),
+        ("supp", "J 族跳变因子（IC 格）", V3_DIR / "jump" / "ic.parquet",
+         None),
+        ("supp", "J 族时段剖面", V3_DIR / "jump" / "session_response.parquet",
+         None),
+        ("supp", "J 族事件级折叠对照", V3_DIR / "jump" /
+         "event_factor_ic.parquet", None),
+        ("supp", "跨族复合 XF", V3_DIR / "jump" / "composite_ic.parquet",
+         None),
     ]
     rows: list[dict] = []
     for part, family, path, flt in inventory:
