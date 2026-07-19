@@ -927,6 +927,104 @@ Polymarket alpha</b>。实盘配置结论相应为零仓位；下一步以证伪
 """
 
 
+# ------------------------------------- 第一部分 §12.15 证伪型检验执行
+def sec_p0() -> str:
+    """§12.15：P0 证伪型检验的执行结果与研究冻结声明。"""
+    ddir = SUPP.parent / "defense"
+    jdir = SUPP.parent / "jump"
+    cp = ddir / "c8_incremental.parquet"
+    if not cp.exists():
+        return ""
+    c8 = pd.read_parquet(cp)
+    ji = pd.read_parquet(jdir / "inference.parquet")
+
+    main5 = c8[~c8["product"].str.contains("用")]
+    rows = []
+    for _, r in main5.iterrows():
+        rows.append(
+            f"<tr><td>{r['product']}</td>"
+            f"<td>{_f(r['partial_ic'])} ({_f(r['partial_t'], 2)})</td>"
+            f"<td>{_f(r['t_day'], 2)} / {_f(r['t_night'], 2)}</td>"
+            f"<td>{_f(r['t_wall'], 2)}</td>"
+            f"<td>{r['oos_dr2']*100:+.3f}% ({_f(r['dm_t'], 2)})</td>"
+            f"<td>{r['p_shift']:.2f} / {r['p_sign']:.2f}</td>"
+            f"<td><b>{'通过' if r['verdict_pass'] else '未通过'}</b>"
+            f"</td></tr>")
+    c8_tab = _table(rows, "<th>品种</th><th>partial RankIC (HAC t)</th>"
+                    "<th>日盘 / 夜盘 t</th><th>墙钟窗 t</th>"
+                    "<th>OOS ΔR² (DM t)</th><th>安慰剂 p 时移/翻号</th>"
+                    "<th>判定</th>", "wraptext")
+    mp = c8[c8["product"].str.contains("用")].set_index("product")
+
+    jrows = []
+    for _, r in ji.iterrows():
+        if pd.notna(r.get("hac_t")):
+            jrows.append(
+                f"<tr><td>{r['product']} {r['cell']}</td>"
+                f"<td>{r['mean_bp']:+.1f}</td>"
+                f"<td>{int(r['n_events'])} / {int(r['n_days'])}</td>"
+                f"<td>{_f(r['hac_t'], 2)}</td>"
+                f"<td>{r['p_wild']:.3f}</td><td>{r['p_perm']:.3f}</td>"
+                f"</tr>")
+        else:
+            jrows.append(
+                f"<tr><td>{r['product']} {r['cell']}</td>"
+                f"<td>{r['mean_bp']:+.1f}</td>"
+                f"<td>{int(r['n_events'])} / {int(r['n_days'])}</td>"
+                f"<td colspan='3'>有效事件不足，无法推断</td></tr>")
+    j_tab = _table(jrows, "<th>格</th><th>符号化响应 bp</th>"
+                   "<th>事件 / 交易日</th><th>日聚类 HAC t</th>"
+                   "<th>wild cluster p</th><th>日期块置换 p</th>",
+                   "wraptext")
+
+    sc = c8[c8["product"] == "SC"].iloc[0]
+    return f"""
+<h3>12.15 证伪型检验的执行（P0）与研究冻结声明</h3>
+<p>按 §12.14 登记的待办执行两项证伪型检验，判定标准先于计算注册在
+脚本（<code>v3_c8_incremental.py</code> /
+<code>v3_jump_inference.py</code>）。</p>
+
+<p><b>P0-1　C8 严格增量检验：五品种全部未通过，Polymarket 分钟级
+增量正式否定。</b>基线 = [反转腿 z(r120)、动量、波动、量能、时段
+哑变量]；PM 腿与目标各对基线残差化后按交易日推断。注册判定（缺一
+不过）：|partial HAC t| ≥ 2 且时移安慰剂 p &lt; 0.05 且 OOS
+ΔR² &gt; 0 且 DM t ≥ 2：</p>
+{c8_tab}
+<p>SC 是唯一名义 |t| ≥ 2 的品种（partial t = {sc['partial_t']:.2f}），
+但其余三项判据全部未过（时移安慰剂 p = {sc['p_shift']:.2f}、OOS
+ΔR² = {sc['oos_dr2']*100:+.3f}% 且 DM t = {sc['dm_t']:.2f}）；
+<b>映射安慰剂给出决定性反证</b>：把主题不相交的 M 贸易 PM 腿给 SC
+用，partial t = {mp.iloc[0]['partial_t']:+.2f}，把 SC 的中东 / 油价
+腿给 M 用为 {mp.iloc[1]['partial_t']:+.2f}：机制无关的错配腿比正确
+映射更"显著"，说明该边际信号是 PM 活跃度类共同伪影而非主题映射
+信息。墙钟 120 分钟窗口的对照在全部品种上同样为零。结论：<b>在价格
+基线之上，C8 的 PM 腿没有可辨别的分钟级增量</b>，表 1 的 D 级降格
+升级为"已证伪"。</p>
+
+<p><b>P0-2　J 族正确推断：SC 盘中跳维持 10% 探索证据，M 孤立跳
+不可推断。</b>时段分类改用真实期货分钟网格（映射延迟 ≤ 2 分钟记
+盘中，节假日自动落入闭市），(theme, ts) 折叠为事件后按交易日聚类，
+推断用 wild cluster bootstrap（999 次日块 Rademacher）与日期块置换
+（事件保持符号与日内时刻、所在日整块移位、响应取移位日同时刻，
+999 次）双轨：</p>
+{j_tab}
+<p>SC 盘中日盘 15 分钟格两种推断分别给 p = 0.053 与 0.012，方向在
+真实日历与事件折叠下稳定为正，但未达注册的联合 5% 判定（两法均
+&lt; 0.05），维持 10% 水平探索证据。M 孤立跳按最窄口径只有 6 个
+独立事件（5 个交易日），<b>事件级推断在当前样本不可执行</b>，此前
+基于滚动分钟的 M 跳变候选悬置，待样本延长后重检。</p>
+
+<p><b>研究冻结声明（P4）。</b>自 2026-07-18 起冻结以下对象，其后
+数据（未触碰样本）只用于一次性预约定验证，不再根据新结果修改定义：
+主题注册表（cn_registry_v3）与方向先验；C8 公式；J2 / J5 定义与
+E1 跳检测口径；截面 E1 经济先验权重图谱；候选清单（豆粕 M 样本外
+增量、铁矿石 W8 / W10、tension 波动通道、SC 盘中跳时段格）；成本
+（单边 4 bp 基准）与推断口径（交易日聚类、BH-FDR 族定义）。投产
+门槛沿用审计建议：两个不重叠 OOS 时段为正、日聚类后显著、q &lt;
+0.10、两倍成本后为正、删除前三大收益 episode 后仍为正。</p>
+"""
+
+
 # ------------------------------------- 第一部分 §12.13 钱包级知情流
 def sec_wallet() -> str:
     """§12.13：P3 钱包级知情流（技能表 + 聪明钱加权检验）。"""

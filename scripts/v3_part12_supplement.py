@@ -998,6 +998,10 @@ def test_count_audit() -> pd.DataFrame:
          "c8_decomposition.parquet", None),
         ("supp", "第五轮审计：J 重聚类推断", V3_DIR / "jump" /
          "recluster.parquet", None),
+        ("supp", "P0-1 C8 严格增量检验", V3_DIR / "defense" /
+         "c8_incremental.parquet", None),
+        ("supp", "P0-2 J 正确推断", V3_DIR / "jump" /
+         "inference.parquet", None),
     ]
     rows: list[dict] = []
     for part, family, path, flt in inventory:
