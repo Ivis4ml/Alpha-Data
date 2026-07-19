@@ -1002,6 +1002,14 @@ def test_count_audit() -> pd.DataFrame:
          "c8_incremental.parquet", None),
         ("supp", "P0-2 J 正确推断", V3_DIR / "jump" /
          "inference.parquet", None),
+        ("supp", "预注册 R1 截面回吐", V3_DIR / "prereg" /
+         "r1_d3.parquet", None),
+        ("supp", "预注册 R2 相对残差", V3_DIR / "prereg" /
+         "r2_resid.parquet", None),
+        ("supp", "预注册 R3 尾部旗标", V3_DIR / "prereg" /
+         "r3_flag.parquet", None),
+        ("supp", "预注册 R4 期限结构", V3_DIR / "prereg" /
+         "r4_curve.parquet", None),
     ]
     rows: list[dict] = []
     for part, family, path, flt in inventory:

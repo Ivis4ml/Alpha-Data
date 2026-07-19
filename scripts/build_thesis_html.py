@@ -373,6 +373,7 @@ def build() -> str:
     supp_wallet = v3_supp_sections.sec_wallet()
     supp_audit5 = v3_supp_sections.sec_audit5()
     supp_p0 = v3_supp_sections.sec_p0()
+    supp_prereg = v3_supp_sections.sec_prereg()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -918,6 +919,7 @@ suppression effect）且 n=37 对 13 个回归元自由度
 {supp_wallet}
 {supp_audit5}
 {supp_p0}
+{supp_prereg}
 
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>
