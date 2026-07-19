@@ -172,6 +172,139 @@ def e2_scores(panel: pd.DataFrame, z: pd.DataFrame) -> pd.Series:
             .rename("score_e2").rename_axis(["trade_date", "product"]))
 
 
+def quintile_stats(uni: pd.DataFrame) -> pd.DataFrame:
+    """分位组合：逐日按得分五分位，日内去均值后的组内平均收益。"""
+    rows = []
+    for score, target, design in (("score_e1", "r_open", "D1"),
+                                  ("score_e2", "r_open", "D1"),
+                                  ("score_e1", "r_day", "D2"),
+                                  ("score_e2", "r_day", "D2")):
+        for date, g in uni.groupby("trade_date"):
+            gg = g.dropna(subset=[score, target])
+            gg = gg[gg[score].abs() > 0]
+            if len(gg) < MIN_UNIVERSE:
+                continue
+            q = pd.qcut(gg[score].rank(method="first"), 5, labels=False)
+            dem = gg[target] - gg[target].mean()
+            for k in range(5):
+                rows.append({"design": design, "score": score,
+                             "trade_date": date, "q": k + 1,
+                             "ret": dem[q == k].mean()})
+    daily = pd.DataFrame(rows)
+    out = []
+    for (design, score, q), g in daily.groupby(["design", "score", "q"]):
+        m, t, n = hac_mean(g.set_index("trade_date")["ret"])
+        out.append({"design": design, "score": score, "q": int(q),
+                    "mean_bp": m * 1e4, "hac_t": t, "n_days": n})
+    return pd.DataFrame(out)
+
+
+def product_corr(uni: pd.DataFrame) -> pd.DataFrame:
+    """逐品种：E2 得分与开盘前收益的时序秩相关（谁在承载截面结构）。"""
+    rows = []
+    for prod, g in uni.groupby("product"):
+        gg = g.dropna(subset=["score_e2", "r_open"])
+        gg = gg[gg["score_e2"].abs() > 0]
+        if len(gg) < 60:
+            continue
+        r = spearmanr(gg["score_e2"], gg["r_open"])
+        rows.append({"product": prod, "rank_r": r.statistic,
+                     "p": r.pvalue, "n": len(gg)})
+    return (pd.DataFrame(rows)
+            .sort_values("rank_r", ascending=False)
+            .reset_index(drop=True))
+
+
+def showcase_days(uni: pd.DataFrame) -> pd.DataFrame:
+    """示例日（规则化选取防挑选偏误）：E1 得分截面离散度最大的一天，
+    冲突月（6 月）与非冲突月各一。"""
+    d = uni.dropna(subset=["score_e1", "r_open"])
+    d = d[d["score_e1"].abs() > 0]
+    disp = d.groupby("trade_date")["score_e1"].std()
+    jun = disp[disp.index.str.startswith("2026-06")]
+    rest = disp[~disp.index.str.startswith("2026-06")]
+    days = [jun.idxmax(), rest.idxmax()]
+    return d[d["trade_date"].isin(days)][
+        ["trade_date", "product", "score_e1", "r_open"]].copy()
+
+
+def make_detail_figures(ic: pd.DataFrame, quint: pd.DataFrame,
+                        show: pd.DataFrame) -> None:
+    """三张补充图：分位单调性、累积 IC、示例日截面散点。"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pub_style
+    pub_style.setup(cn_font=True)
+    figdir = ROOT / "docs" / "figures"
+
+    # 图一：分位组合单调性（D1 单调上行 vs D2 平坦）
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 3.4))
+    for ax, design, title in ((axes[0], "D1", "(a) 吸收：开盘前收益按得分五分位"),
+                              (axes[1], "D2", "(b) 日盘预测：同一得分，无结构")):
+        sub = quint[quint["design"] == design]
+        w = 0.38
+        for off, sc, lab, c in ((-w / 2, "score_e1", "经济先验", "#3b6db3"),
+                                (w / 2, "score_e2", "估计beta", "#7aa5d6")):
+            g = sub[sub["score"] == sc].sort_values("q")
+            se = (g["mean_bp"] / g["hac_t"]).abs()
+            ax.bar(g["q"] + off, g["mean_bp"], width=w, color=c,
+                   yerr=1.96 * se, capsize=3, label=lab, alpha=0.9)
+        ax.axhline(0, color="k", lw=0.6)
+        ax.set_xticks(range(1, 6),
+                      ["Q1\n最低", "Q2", "Q3", "Q4", "Q5\n最高"], fontsize=8)
+        ax.set_ylabel("日内去均值收益 (bp/日)")
+        ax.set_title(title, fontsize=10)
+        ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(figdir / "f_supp_xsec_quintile.png", dpi=150)
+    plt.close(fig)
+
+    # 图二：逐日 IC 累积曲线
+    fig, ax = plt.subplots(figsize=(9.5, 3.4))
+    styles = {("D1_absorb", "score_e1"): ("-", "#3b6db3", "吸收·先验"),
+              ("D1_absorb", "score_e2"): ("-", "#12336e", "吸收·beta"),
+              ("D2_predict", "score_e1"): ("--", "#c0504d", "预测·先验"),
+              ("D2_predict", "score_e2"): ("--", "#e0a3a0", "预测·beta")}
+    for (design, sc), (ls, c, lab) in styles.items():
+        g = (ic[(ic.design == design) & (ic.score == sc)]
+             .sort_values("trade_date"))
+        ax.plot(pd.to_datetime(g["trade_date"]), g["ic"].cumsum(),
+                ls, color=c, lw=1.4, label=lab)
+    ax.axhline(0, color="k", lw=0.6)
+    ax.set_ylabel("逐日截面 RankIC 累积和")
+    ax.set_title("吸收的截面 IC 稳定累积；预测在零附近漫游", fontsize=10)
+    ax.legend(fontsize=8, ncol=2)
+    fig.tight_layout()
+    fig.savefig(figdir / "f_supp_xsec_cum.png", dpi=150)
+    plt.close(fig)
+
+    # 图三：示例日截面散点（规则选取的两天）
+    days = sorted(show["trade_date"].unique())
+    fig, axes = plt.subplots(1, len(days), figsize=(10.5, 3.8))
+    for ax, day in zip(np.atleast_1d(axes), days):
+        g = show[show["trade_date"] == day]
+        ax.scatter(g["score_e1"], g["r_open"] * 1e4, s=18, alpha=0.7,
+                   color="#3b6db3")
+        big = g.reindex(g["score_e1"].abs().sort_values(ascending=False)
+                        .head(8).index)
+        for _, r in big.iterrows():
+            ax.annotate(r["product"], (r["score_e1"], r["r_open"] * 1e4),
+                        fontsize=7, xytext=(3, 3),
+                        textcoords="offset points")
+        rr = spearmanr(g["score_e1"], g["r_open"])
+        ax.axhline(0, color="k", lw=0.5)
+        ax.axvline(0, color="k", lw=0.5)
+        ax.set_xlabel("E1 暴露度得分")
+        ax.set_ylabel("开盘前收益 (bp)")
+        ax.set_title(f"{day}（n={len(g)}，RankIC {rr.statistic:+.2f}）",
+                     fontsize=10)
+    fig.tight_layout()
+    fig.savefig(figdir / "f_supp_xsec_scatter.png", dpi=150)
+    plt.close(fig)
+    print("detail figures -> f_supp_xsec_{quintile,cum,scatter}.png")
+
+
 def make_figure(summary: pd.DataFrame, monthly: pd.DataFrame) -> None:
     """两联图：(a) 6 格汇总（IC 均值与 HAC 95% CI）；(b) 逐月 IC。"""
     import matplotlib
@@ -290,6 +423,14 @@ def main() -> int:
                .agg(["mean", "size"]).reset_index())
 
     make_figure(summary, monthly)
+
+    quint = quintile_stats(uni)
+    pcorr = product_corr(uni)
+    show = showcase_days(uni)
+    quint.to_parquet(OUT / "quintiles.parquet", index=False)
+    pcorr.to_parquet(OUT / "product_corr.parquet", index=False)
+    show.to_parquet(OUT / "showcase.parquet", index=False)
+    make_detail_figures(ic, quint, show)
 
     z.reset_index().to_parquet(OUT / "theme_signals.parquet", index=False)
     panel.to_parquet(OUT / "panel.parquet", index=False)

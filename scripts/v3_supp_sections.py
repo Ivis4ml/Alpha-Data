@@ -767,14 +767,73 @@ z 归一只用 t−1 前历史；宇宙 = 过去 20 日成交额中位数 ≥ 10
       "(a) 六格汇总：吸收（蓝）两种载荷下截面 RankIC 均显著为正，日盘"
       "预测（红）与零不可分；(b) 逐月剖面：吸收各月为正、非单一冲突期"
       "产物，预测无任何月份稳定。")}
+{_xsec_evidence()}
 <p><b>D2：日盘残余预测力为零</b>：E1 IC +0.010（t 0.30）、E2 −0.054
 （t −1.31），五分位多空 {_f(float(ls1['mean']), 1)} bp/日（t
 {_f(float(ls1['hac_t']), 2)}）与 {_f(float(ls2['mean']), 1)} bp/日（t
-{_f(float(ls2['hac_t']), 2)}）。次级观察：E2 侧剔除 6 月后为 −0.083
+{_f(float(ls2['hac_t']), 2)}）；分位图 (b) 显示同一得分在日盘收益上
+无任何梯度。次级观察：E2 侧剔除 6 月后为 −0.083
 （t −2.17），若存在结构则是吸收后回吐的反向，按单格纪律不作为结论、
 留待扩展样本。至此"开盘后无残余方向信息"有三层互证：单品种时序
 （§7.1 FDR 全灭）、分钟级（附录三 §4.3 几分钟内衰减）、截面（本节
 IC≈0）。</p>
+"""
+
+
+def _xsec_evidence() -> str:
+    """§12.12 的证据展示块：分位单调性、承载品种、累积 IC、示例日。"""
+    xdir = SUPP.parent / "xsec"
+    qp = xdir / "quintiles.parquet"
+    if not qp.exists():
+        return ""
+    quint = pd.read_parquet(qp)
+    pcorr = pd.read_parquet(xdir / "product_corr.parquet")
+    show = pd.read_parquet(xdir / "showcase.parquet")
+
+    d1 = quint[quint["design"] == "D1"].pivot_table(
+        index="q", columns="score", values="mean_bp")
+    sp1 = d1.loc[5, "score_e1"] - d1.loc[1, "score_e1"]
+    sp2 = d1.loc[5, "score_e2"] - d1.loc[1, "score_e2"]
+
+    top = pcorr.head(8)
+    prows = [f"<tr><td>{r['product']}</td><td>{_f(r['rank_r'])}</td>"
+             f"<td>{int(r['n'])}</td></tr>" for _, r in top.iterrows()]
+    ptab = _table(prows, "<th>品种</th><th>得分与开盘前收益的时序秩相关"
+                  "</th><th>天数</th>")
+    days = sorted(show["trade_date"].unique())
+
+    return f"""
+<p><b>证据展示一：分位组合的单调性。</b>逐日把宇宙按得分五分位、组内
+取日内去均值收益后平均：吸收目标下最高分位比最低分位每日高约
+{sp1:.0f} bp（经济先验）与 {sp2:.0f} bp（估计 beta），两端分位的
+HAC t 均超过 3；同一得分对日盘收益无任何梯度。</p>
+{_fig("f_supp_xsec_quintile.png",
+      "(a) 吸收：开盘前收益随暴露度五分位近单调上行（Q1 约 −53/−56 "
+      "bp/日，Q5 约 +49/+53 bp/日，误差线为 HAC 95% CI）；(b) 日盘"
+      "预测：同一得分五分位全部与零不可分。")}
+<p><b>证据展示二：谁在承载截面结构。</b>逐品种看得分与开盘前收益的
+时序秩相关，前列恰为机制上暴露最直接的品种：黄金 AU（避险 + 利率）、
+燃油 FU / 低硫燃油 LU / 沥青 BU / 原油 SC（能源链）、甲醇 MA /
+聚丙烯 PP / 塑料 L / 乙二醇 EG（油化工成本链）。板块构成与 E1
+先验图谱一致，不是少数品种或某个板块外的偶然相关：</p>
+{ptab}
+<p><b>证据展示三：时间与个例。</b>累积 IC 曲线显示吸收的截面结构
+全样本持续累积、无断层。按"E1 得分截面离散度最大"的规则（防挑选
+偏误）各选冲突月与非冲突月一天作个例：{days[1]}（美伊冲突降温日）
+结构教科书式清晰，能源链（SC / FU / LU / BU / PG）与集运 EC 挤在
+高负暴露端、开盘前收益 −200 至 −520 bp，低暴露品种贴零，截面
+RankIC +0.86；{days[0]}（非冲突期普通日）得分与收益都聚在零附近、
+单日 RankIC 仅 +0.18，与非冲突月均值 0.14 一致。两天对照恰是吸收的
+条件结构：截面排序在有信息要定价的日子锐利，在无事发生的日子
+自然弱。</p>
+{_fig("f_supp_xsec_cum.png",
+      "四格逐日截面 RankIC 的累积和：吸收（实线）稳定上行且斜率在"
+      "冲突期外不减，预测（虚线）在零附近漫游。")}
+{_fig("f_supp_xsec_scatter.png",
+      "规则选取的两个示例日：横轴为 E1 暴露度得分，纵轴为开盘前收益"
+      "（bp），标注 |得分| 前 8 的品种。左：2026-02-24（非冲突期，"
+      "单日结构弱属常态）；右：2026-06-15（冲突降温日，高暴露端为"
+      "能源链与集运，方向与幅度按暴露度排开）。")}
 """
 
 
