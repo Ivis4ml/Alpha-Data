@@ -763,14 +763,23 @@ def signal_defs_section() -> str:
 def stats_section() -> str:
     st = pd.read_parquet(D / "signal_stats.parquet")
     sub = st[st["product"] == "SC"].set_index("signal").reindex(ALL_SIGNALS)
+    ext_p = D / "signal_stats_ext.parquet"
+    ext_df = (pd.read_parquet(ext_p) if ext_p.exists() else pd.DataFrame())
+    ext_sc = (ext_df[ext_df["product"] == "SC"].set_index("signal")
+              if len(ext_df) else pd.DataFrame())
     head = ("<tr><th>信号</th><th>非零占比</th><th>日均非零</th>"
             "<th>缺失率</th><th>极值率</th><th>均值</th><th>标准差</th>"
-            "<th>偏度</th><th>q1</th><th>中位</th><th>q99</th></tr>")
+            "<th>偏度</th><th>峰度</th><th>q1</th><th>中位</th>"
+            "<th>q99</th></tr>")
     rows = []
     for s, r in sub.iterrows():
         if pd.isna(r["n_minutes"]):
             continue
         ext = "" if pd.isna(r["extreme_rate"]) else f"{r['extreme_rate']:.1%}"
+        kurt = ""
+        if len(ext_sc) and s in ext_sc.index:
+            kv = ext_sc.loc[s, "kurt"]
+            kurt = f"{kv:+.2f}" if pd.notna(kv) else ""
         def fm(v: float) -> str:
             return "0" if abs(v) < 1e-10 else f"{v:+.3g}"
         rows.append(
@@ -778,8 +787,25 @@ def stats_section() -> str:
             f"<td>{r['per_day']:.0f}</td><td>{r['missing_rate']:.1%}</td>"
             f"<td>{ext}</td>"
             f"<td>{fm(r['mean'])}</td><td>{r['std']:.3g}</td>"
-            f"<td>{r['skew']:+.2f}</td><td>{fm(r['q1'])}</td>"
+            f"<td>{r['skew']:+.2f}</td><td>{kurt}</td><td>{fm(r['q1'])}</td>"
             f"<td>{fm(r['q50'])}</td><td>{fm(r['q99'])}</td></tr>")
+
+    # 离散信号 valuecount 表（取值种数 <= 9，SC）
+    disc_html = ""
+    if len(ext_sc):
+        disc = ext_sc[ext_sc["is_discrete"]]
+        drows = [f"<tr><td>{sig}</td><td>{int(r['n_unique'])}</td>"
+                 f"<td>{r['valuecount']}</td>"
+                 f"<td>{r['nonzero_rate']:.1%}</td></tr>"
+                 for sig, r in disc.iterrows()]
+        disc_html = (
+            "<h4>离散信号 valuecount（SC，取值种数 ≤ 9 的信号）</h4>"
+            "<p>签名型与低基数信号逐值计数与占比（连续信号见上表统计量"
+            "与下节直方图；全部 5 品种 47 信号见 "
+            "<code>signal_stats_ext.parquet</code>）：</p>"
+            + wrap("<tr><th>信号</th><th>取值种数</th>"
+                   "<th>value count（值: 次数（占比））</th>"
+                   "<th>非零频率</th></tr>", drows))
     figs = []
     panel = pd.read_parquet(D / "panel_SC.parquet", columns=ALL_SIGNALS)
     for fam, sigs in (("N", NUM_SIGNALS), ("C", COMBO_SIGNALS),
@@ -799,13 +825,22 @@ def stats_section() -> str:
             fig, f"{fam} 族信号非零取值分布（SC，截尾 [0.5%, 99.5%]，"
                  "对数频数轴）。"
                  + ("X 族取值集中在 ±1（签名离散型）。" if fam == "X" else "")))
+    j_fig = _fig_file(
+        "f_sigdist_J.png",
+        "J 族因子非零取值分布（SC，滚动 z 后，截尾 [0.5%, 99.5%]，对数"
+        "频数轴）。J 族统计量（均值 / 中位数 / 标准差 / 偏度 / 峰度 / "
+        "非零频率）连同 40 信号一并收录于 signal_stats_ext.parquet"
+        "（47 信号 × 5 品种）。")
     return ("<h2 id='s4'>4　单信号评估：统计基本功</h2>"
             "<h3>4.1 频率、取值统计、缺失率与极值率</h3>"
             "<p>下表为 SC；全部 5 品种 × 40 信号见 "
-            "<code>signal_stats.parquet</code>。缺失率 = z 预热期占比（缺测"
-            "编码为 0），极值率 = 非零值中偏离均值 3σ 以上占比：</p>"
-            + wrap(head, rows)
-            + "<h3>4.2 取值分布</h3>" + "".join(figs))
+            "<code>signal_stats.parquet</code>，峰度与离散 valuecount 的"
+            "补全表（含 J 族，47 信号 × 5 品种）见 "
+            "<code>signal_stats_ext.parquet</code>。缺失率 = z 预热期占比"
+            "（缺测编码为 0），极值率 = 非零值中偏离均值 3σ 以上占比，"
+            "偏度与峰度按非零值口径：</p>"
+            + wrap(head, rows) + disc_html
+            + "<h3>4.2 取值分布</h3>" + "".join(figs) + j_fig)
 
 
 def ic_section() -> str:
