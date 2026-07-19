@@ -187,6 +187,8 @@ def signal_stats(theme_tab: pd.DataFrame) -> pd.DataFrame:
 
 def fig_signal_dist(theme_tab: pd.DataFrame) -> None:
     """头部主题 x 窗口信号的直方图网格。"""
+    import pub_style
+    pub_style.setup(cn_font=True)
     themes = ["mideast_conflict", "oil_price", "metal_price", "fed_policy"]
     cn = {"mideast_conflict": "中东冲突", "oil_price": "油价",
           "metal_price": "金属价格", "fed_policy": "美联储"}
