@@ -62,6 +62,42 @@ def signal_summary_table() -> str:
 为准）；离散信号"取 1"指上行触发，平均收益为毛值（bp、未扣成本）；
 月次数按样本 125 个交易日折算（约 5.95 个月）；"不适用"为该类
 信号不适用的字段的显式填充。</div>
+
+<p><b>信号的生成与实施（从原始数据到表 2 的信号值）。</b>六步
+流水线，每步给出实现脚本：（i）<b>链上采集</b>：订阅 Polygon 区块
+日志中撮合合约的 OrderFilled 事件（出块约 2 秒），按 taker 地址
+规则剔除中继腿、剔除铸造与合并类机械成交，拼接为统一逐笔成交记录
+（<code>crawl_polymarket_chain.py → v3_build_tape.py</code>）；
+（ii）<b>主题映射</b>：按冻结注册表
+<code>cn_registry_v3.parquet</code>（关键词规则、方向先验
+orientation、累计成交额首达 10 万美元的时点化准入）把逐笔归入
+8 个主题（<code>select_polymarket_markets.py</code>，定义已被
+<code>freeze/manifest.json</code> 哈希锁定）；（iii）<b>分钟
+聚合</b>：成交价截断到 [0.02, 0.98] 后取 logit，按市场 orientation
+与 √累计USDC 的时点化权重聚合为主题分钟级信念创新 N1（公式与
+归一化登记见附录三 §3），桶标签取右端、只含严格早于该分钟收盘的
+成交；（iv）<b>期货侧对齐</b>：1 分钟 K 线以收盘戳为标签，信号桶
+严格早于标签时刻，夜盘按时间戳归属交易日、换月日剔除；（v）<b>信号
+计算</b>：C8 = z(过去 120 交易分钟 N1 之和) − z(同窗期货收益之和)
+（滚动 z 窗 4,800 分钟、min 960），逐分钟发出；E1 上行跳 = N1 超过
+3×1.4826×MAD 稳健阈值（30 日滚动、下限 0.05）取 1；事件跳 =
+15 分钟桶 logit 变化超同口径阈值且桶内成交 ≥ 1 万美元，
+(theme, ts) 折叠为事件、按 n_cojump = 0 判孤立，映射到品种分钟
+网格（<code>v3_defense_build.py / v3_jump_factors.py /
+v3_jump_inference.py</code>）；（vi）<b>登记导出</b>：
+<code>export_signal_summary.py</code> 从上述产物计算表 2 全部字段
+并写 <code>docs/signal_summary.json</code>，构建时渲染进正文。</p>
+
+<p><b>实时实施要点。</b>全链无未来信息：滚动统计只用 ≤ t 的观测、
+准入与聚合权重时点化、全部参数与阈值已冻结（哈希对账见
+<code>freeze/manifest.json</code>）。延迟预算：区块确认约 2 至
+4 秒，解析与聚合为毫秒级，对分钟级信号充裕；部署所需仅为一路链上
+日志订阅（WebSocket RPC，建议双源冗余防断流）与一路期货分钟行情。
+三个运行期边界：市场结算后须按链上 ConditionResolution 事件即时
+移出面板（结算后价格恒为 0 或 1，非信号）；节假日与时段判定必须用
+真实期货分钟网格而非星期钟点规则（§12.15 修正后的口径）；表 2 的
+统计为冻结样本描述值，实施不等于对其预测力的背书，投产判定以
+§12.15-12.16 的门槛与未触碰样本裁决为准。</p>
 """
 
 PAPER_STYLE = """
