@@ -1867,7 +1867,8 @@ def build_embedded() -> str:
 
 def main() -> int:
     pub_style.setup(cn_font=True)
-    html = build()
+    from build_thesis_html import number_figures_tables
+    html = number_figures_tables(build())
     OUT.write_text(html)
     print(f"written {OUT} ({len(html) / 1e6:.2f} MB)")
     return 0

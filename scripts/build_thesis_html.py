@@ -52,6 +52,46 @@ def fig_tag(rel: str, caption: str) -> str:
             f'alt=""></div><figcaption>{caption}</figcaption></figure>')
 
 
+def number_figures_tables(html: str) -> str:
+    """构建时全文自动编号：每个 <figure> 打「图 N」并加 id=figN，每个
+    tablewrap 打「表 N」并加 id=tabN；已有「表 X」手工标题的编号被
+    全局序号接管（内容变动时编号自动保持连续，避免手工漂移）。"""
+    fig_i = 0
+
+    def _fig(m: re.Match[str]) -> str:
+        nonlocal fig_i
+        fig_i += 1
+        tag, body = m.group(1), m.group(2)
+        if " id=" not in tag:
+            tag = tag[:-1] + f' id="fig{fig_i}">'
+        body = body.replace("<figcaption>",
+                            f"<figcaption><b>图 {fig_i}</b>　", 1)
+        return tag + body + "</figure>"
+
+    html = re.sub(r"(<figure[^>]*>)(.*?)</figure>", _fig, html,
+                  flags=re.DOTALL)
+
+    tab_i = 0
+
+    def _tab(m: re.Match[str]) -> str:
+        nonlocal tab_i
+        tab_i += 1
+        title, attrs = m.group("t"), m.group("a")
+        if " id=" not in attrs:
+            attrs = attrs + f' id="tab{tab_i}"'
+        if title is not None:
+            core = re.sub(r"^表\s*[0-9]+[a-zA-Z]?　?\s*", "", title)
+            return (f'<div class="tbl-title">表 {tab_i}　{core}</div>'
+                    f'<div class="tablewrap"{attrs}>')
+        return (f'<div class="tbl-idx">表 {tab_i}</div>'
+                f'<div class="tablewrap"{attrs}>')
+
+    html = re.sub(r'(?:<div class="tbl-title">(?P<t>.*?)</div>\s*)?'
+                  r'<div class="tablewrap"(?P<a>[^>]*)>',
+                  _tab, html, flags=re.DOTALL)
+    return html
+
+
 def _split_long_paragraphs(html: str, limit: int = 240) -> str:
     """在不破坏内联标签的前提下，按句子拆分过长段落。"""
 
@@ -244,6 +284,9 @@ def surrogate_tables_html() -> tuple[str, str]:
 
 
 STYLE = """
+.tbl-idx{font-weight:700;font-size:.9em;margin:1.2em 0 .35em;
+  color:var(--ink-soft)}
+
 :root {
   --paper: #FAF9F5; --ink: #22262C; --ink-soft: #5C6470; --line: #E4E1D8;
   --card: #FFFFFF; --accent: #A8430D; --accent2: #1B5CC4; --chip: #F1EEE6;
@@ -1101,7 +1144,7 @@ docs/signal_summary.json →（构建时渲染为正文表 2）</code>
 feat/cn-futures-polymarket</div>
 </main>
 """
-    polished = _split_long_paragraphs(html)
+    polished = number_figures_tables(_split_long_paragraphs(html))
     return "\n".join(line.rstrip() for line in polished.splitlines()) + "\n"
 
 

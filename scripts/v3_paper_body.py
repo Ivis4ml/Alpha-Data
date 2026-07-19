@@ -43,7 +43,7 @@ def _fig_b64(name: str, caption: str) -> str:
 
 
 def _summary_stats_block(rows: list[dict]) -> str:
-    """表 2b：公式与取值统计量 + 直方图（与表 2 同源 JSON 渲染）。"""
+    """统计量表：公式与取值统计量 + 直方图（与信号登记表同源渲染）。"""
     if not rows or "公式" not in rows[0]:
         return ""
     sig_name = ["C8", "C8", "C8", "C8", "C8",
@@ -64,7 +64,7 @@ def _summary_stats_block(rows: list[dict]) -> str:
     fig = _fig_b64(
         "f_signal_summary_hist.png",
         "表 2 信号的取值分布。(a)-(e) 五品种 C8 直方图（对数频数轴；"
-        "近对称、轻度重尾，偏度与峰度见表 2b）；(f) 三个离散信号的"
+        "近对称、轻度重尾，偏度与峰度见上表）；(f) 三个离散信号的"
         "value count（对数轴，上行 / 下行触发次数）。")
     return f"""
 <div class="tbl-title">表 2b　信号公式、取值统计量与品种基准收益
