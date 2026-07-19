@@ -158,14 +158,16 @@ def backtest_tables_html() -> tuple[str, str, str]:
     """回测指标 / 固定杠杆 / 目标波动三张表。"""
     m = pd.read_parquet(DEEP / "backtest_metrics.parquet")
     m = m[m.cost_bp > 0].sort_values("sharpe", ascending=False)
-    head = ("<tr><th>策略</th><th>年化收益%</th><th>年化波动%</th>"
+    head = ("<tr><th>策略</th><th>单边成本bp</th><th>年化收益%</th>"
+            "<th>年化波动%</th>"
             "<th>Sharpe</th><th>95% CI</th><th>最大回撤%</th>"
             "<th>胜率</th><th>持仓日</th></tr>")
     rows = []
     for r in m.itertuples(index=False):
         ci0 = f"[{r.sharpe_lo:+.1f}, {r.sharpe_hi:+.1f}]"
         rows.append(
-            f"<tr><td>{r.strategy}</td><td>{r.ann_ret_pct:+.1f}</td>"
+            f"<tr><td>{r.strategy}</td><td>{int(r.cost_bp)}</td>"
+            f"<td>{r.ann_ret_pct:+.1f}</td>"
             f"<td>{r.ann_vol_pct:.1f}</td><td><b>{r.sharpe:+.2f}</b></td>"
             f"<td>{ci0}</td><td>{r.max_dd_pct:.1f}</td>"
             f"<td>{r.hit_rate:.0%}</td><td>{r.n_active}</td></tr>")
@@ -369,6 +371,7 @@ def build() -> str:
     supp_testcount = v3_supp_sections.sec_test_count()
     supp_xsec = v3_supp_sections.sec_xsec()
     supp_wallet = v3_supp_sections.sec_wallet()
+    supp_audit5 = v3_supp_sections.sec_audit5()
 
     # 公式在 f-string 之外渲染（f-string 表达式含反斜杠需 3.12+，
     # 项目最低 3.11）。
@@ -831,7 +834,9 @@ HAR-lite 模型（|s_gap| 与昨日 RV）给出（系数全样本估计，存在
 {vt_html}
 <p>Sharpe 几乎不变（2.00 → 1.99），<b>最大回撤 21.2% → 13.7%</b>（降 35%）：
 高事件风险日自动减仓避开了最深回撤。这与理论一致——sizing 不能制造
-不存在的边际收益，但能改善收益路径的形状。</p>
+不存在的边际收益，但能改善收益路径的形状。<b>限定（审计补）</b>：该
+结果依赖的波动模型样本外验证未通过（§12.5b，OOS 增量 R² 约零），
+此处只作路径示意，不构成可实施的动态杠杆方案。</p>
 {fig_tag("deep/l1_backtest.png",
          "(a) 四个代表性策略的净值曲线（含 4bp 单边成本）；(b) 固定杠杆扫描："
          "Sharpe（黑线，右轴）对杠杆不变，收益（绿）与回撤（红）同比放大。")}
@@ -910,6 +915,7 @@ suppression effect）且 n=37 对 13 个回归元自由度
 {supp_testcount}
 {supp_xsec}
 {supp_wallet}
+{supp_audit5}
 
 <h2 id="s13">13　结论、局限与推广</h2>
 <h3>13.1 结论（按证据强度排序）</h3>

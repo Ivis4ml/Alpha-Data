@@ -994,6 +994,10 @@ def test_count_audit() -> pd.DataFrame:
          "tests_t2.parquet", None),
         ("supp", "P3 钱包知情流 T3 截面", V3_DIR / "wallet" /
          "tests_t3.parquet", None),
+        ("supp", "第五轮审计：C8 双腿分解", V3_DIR / "defense" /
+         "c8_decomposition.parquet", None),
+        ("supp", "第五轮审计：J 重聚类推断", V3_DIR / "jump" /
+         "recluster.parquet", None),
     ]
     rows: list[dict] = []
     for part, family, path, flt in inventory:
