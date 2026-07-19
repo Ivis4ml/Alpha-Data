@@ -82,13 +82,17 @@ def main() -> int:
     j5 = ic[(ic["product"] == "M") & (ic["signal"] == "J5")
             & (ic["h"] == 15)].iloc[0]
     iso = jumps[(jumps["theme"] == "us_china_trade")
-                & (jumps["n_cojump"] == 1)]
+                & (jumps["n_cojump"] == 0)]
 
+    sr = pd.read_parquet(JD / "session_response.parquet")
+    orig = sr[(sr["product"] == "SC") & (sr["session"] == "盘中·日盘")
+              & (sr["h"] == 15)].iloc[0]
     out = pd.DataFrame([{
         "cell": "SC 盘中日盘 15' (事件桶+日聚类)",
         "n_events": int(len(day)), "n_days": int(len(daily)),
         "mean_bp": float(res.params[0]), "hac_t": float(res.tvalues[0]),
-        "orig_mean_bp": 9.75, "orig_n": 455,
+        "orig_mean_bp": float(orig["signed_bp"]),
+        "orig_n": int(orig["n"]),
         "map_exact_share": exact, "map_late60_share": late,
     }, {
         "cell": "J5×M 15' 有效样本核算",

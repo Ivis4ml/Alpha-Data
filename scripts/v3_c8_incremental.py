@@ -8,14 +8,18 @@
   基线 X_price = [z(r120) 反转腿, mom15_z, rv15_z, volu15_z, 夜盘哑变量]
   PM 腿 x_pm  = z(dl120)（交易分钟窗）；另构造墙钟 120 分钟对照
   目标 y      = fwd_15
-  a) partial RankIC：y 与 x_pm 各对基线残差化后，逐日日内 Spearman，
-     对日序列 HAC(5)。分全样本 / 日盘 / 夜盘三个口径。
+  a) 逐日日内 partial RankIC（第二版，按复审修正）：在<b>每个交易日
+     内部</b>分别把 y 与 x_pm 对基线残差化后计算日内 Spearman，对日
+     序列 HAC(5)。原版为全样本残差化 + 逐日排序的混合统计量（用了
+     未来日期估计残差系数，且会把逐日常数映射转成伪日内变化），已废。
+     分全样本 / 日盘 / 夜盘三个口径。
   b) 展开窗 OOS ΔR²：逐日重估 price-only 与 price+PM 两个线性模型
      （严格用 < t 日的分钟），比较逐日 MSE；ΔR² 为总体口径，DM t 为
      逐日 MSE 差序列的 HAC(5) 均值检验。
   c) 安慰剂族（各 199 次，统计量 = partial RankIC 的 HAC t）：
      时间置换 = PM 腿按日循环移位；方向置换 = PM 腿逐日随机翻号；
-     映射置换 = SC 与 M 互换 PM 腿（主题不相交）。
+     映射置换 = SC 与 M 按<b>分钟时间戳精确对齐</b>互换 PM 腿（主题
+     不相交；原版按日均值广播制造伪日内变化，已废）。
   d) 墙钟对照：x_pm 换成过去 120 墙钟分钟的 PM 累积，重复 (a)。
 
 注册判定（缺一不过）：PM 腿具有分钟级增量当且仅当
@@ -58,7 +62,7 @@ def load_product(prod: str) -> pd.DataFrame:
             .sum().to_numpy())
     df["x_pm_wall"] = zscore(pd.Series(wall, index=df.index))
     df["night"] = (df["session"] == "night").astype(float)
-    keep = ["trade_date", "session", "fwd_15", "x_pm", "x_pm_wall",
+    keep = ["ts", "trade_date", "session", "fwd_15", "x_pm", "x_pm_wall",
             "x_rev", "mom15_z", "rv15_z", "volu15_z", "night"]
     return df[keep].dropna(subset=["fwd_15", "x_pm", "x_rev"]).reset_index(
         drop=True)
@@ -76,19 +80,26 @@ def residualize(y: np.ndarray, X: np.ndarray) -> np.ndarray:
 def daily_partial_t(df: pd.DataFrame, x: np.ndarray,
                     mask: np.ndarray | None = None) -> tuple[float, float,
                                                              int]:
-    """y 与 x 对基线残差化后的逐日 RankIC 与 HAC t。"""
+    """逐日日内 partial RankIC：每日内部分别残差化后求日内 Spearman。
+
+    残差化在单日内部完成（不用任何其他日期的信息）；若 x 在日内为
+    常数（如按日广播的伪映射），残差近零方差，该日被剔除。"""
     sel = np.ones(len(df), bool) if mask is None else mask
     sub = df[sel]
-    Xb = sub[BASE_COLS].fillna(0.0).to_numpy()
-    ry = residualize(sub["fwd_15"].to_numpy(), Xb)
-    rx = residualize(x[sel], Xb)
-    tmp = pd.DataFrame({"d": sub["trade_date"].to_numpy(),
-                        "rx": rx, "ry": ry})
+    tmp = pd.DataFrame({"d": sub["trade_date"].to_numpy(), "x": x[sel]})
+    for c in BASE_COLS:
+        tmp[c] = sub[c].fillna(0.0).to_numpy()
+    tmp["y"] = sub["fwd_15"].to_numpy()
     ics = []
     for _, g in tmp.groupby("d"):
-        if len(g) < 30 or g["rx"].nunique() < 5:
+        if len(g) < 60 or g["x"].nunique() < 5:
             continue
-        ics.append(spearmanr(g["rx"], g["ry"]).statistic)
+        Xb = g[BASE_COLS].to_numpy()
+        ry = residualize(g["y"].to_numpy(), Xb)
+        rx = residualize(g["x"].to_numpy(), Xb)
+        if np.std(rx) < 1e-10:
+            continue
+        ics.append(spearmanr(rx, ry).statistic)
     s = pd.Series(ics).dropna()
     if len(s) < 20:
         return float("nan"), float("nan"), len(s)
@@ -198,16 +209,19 @@ def main() -> int:
               f"(DM {dm_t:+.2f}) | p_shift {p_shift:.3f} "
               f"p_sign {p_sign:.3f} | pass={verdict}")
 
-    # 映射安慰剂：SC 与 M 互换 PM 腿（主题不相交）
+    # 映射安慰剂：SC 与 M 按分钟时间戳精确对齐互换 PM 腿（主题不相交；
+    # 无共同分钟处为缺失并剔除，绝不按日广播）
     for a, b in (("SC", "M"), ("M", "SC")):
         da, db = data[a], data[b]
-        xb = (db.groupby("trade_date")["x_pm"].mean()
-              .reindex(da["trade_date"]).to_numpy())
-        ic, t, nd = daily_partial_t(da, np.nan_to_num(xb))
+        xb = (da[["ts"]].merge(db[["ts", "x_pm"]], on="ts", how="left")
+              ["x_pm"].to_numpy())
+        ok = np.isfinite(xb)
+        ic, t, nd = daily_partial_t(da[ok].reset_index(drop=True), xb[ok])
         rows.append({"product": f"{a}(用{b}的PM腿)", "partial_ic": ic,
                      "partial_t": t, "n_days": nd,
                      "verdict_pass": False})
-        print(f"映射安慰剂 {a}<-{b}: {ic:+.4f} (t {t:+.2f})")
+        print(f"映射安慰剂 {a}<-{b}（时间戳对齐，n={ok.sum():,}）: "
+              f"{ic:+.4f} (t {t:+.2f})")
 
     out = pd.DataFrame(rows)
     out.to_parquet(D / "c8_incremental.parquet", index=False)

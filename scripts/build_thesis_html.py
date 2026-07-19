@@ -1087,7 +1087,13 @@ v3_build_tape.py → v3_measurement.py → v3_baseline_extended.py → v3_layer5
 v3_figures.py → build_thesis_html.py</code>
 ；（第三部分）：<code>v3_defense_build.py → v3_defense_report.py</code>
 ；（答辩级补充）：<code>v3_part12_supplement.py → v3_supp_sections.py</code>
-· 74 项 pytest · 第一部分处理流程经 23 个智能体从不同视角复核（修复 17 项缺陷），
+；（截面与钱包）：<code>v3_cross_section.py / v3_wallet_skill.py /
+v3_smart_flow.py</code>
+；（审计复核与证伪检验）：<code>v3_c8_decompose.py / v3_jump_recluster.py /
+v3_c8_incremental.py / v3_jump_inference.py</code>
+；（预注册族）：<code>v3_prereg_tests.py / fetch_cn_curve.py /
+v3_curve_family.py</code>
+· pytest 全量通过（数量见测试目录）· 第一部分处理流程经 23 个智能体从不同视角复核（修复 17 项缺陷），
 第三部分经 5 个视角复核（修复 71 项问题）· 分支
 feat/cn-futures-polymarket</div>
 </main>

@@ -1,0 +1,48 @@
+{
+  "freeze_date": "2026-07-18",
+  "sample_cutoff": "2026-07-13",
+  "untouched_sample_start": "2026-07-18",
+  "evaluation": {
+    "jump_sc_daysession": "样本积累至 2026-12-31 或新增 95 个交易日（先到者）后一次性裁决",
+    "r1_r2_r4": "2027-01-31 一次性裁决",
+    "r3_flag": "2027-01-31 一次性裁决",
+    "rule": "各候选仅一次预约定检验，不因结果调整定义或重试"
+  },
+  "primary_endpoints": {
+    "jump_sc": "15' 符号化响应，wild(HAC) 与日期块置换均 p<0.05，且净响应（毛值减 8bp）在两倍成本（16bp）后为正",
+    "r1": "全部日截面 RankIC<0 且 |HAC t|>=2",
+    "r2": "事件日残差 3 日自回归系数<0 且 |t|>=2",
+    "r3": "lift>=2 且 Fisher p<0.05",
+    "r4": "同期响应与事件后回归按注册方向且 |t|>=2"
+  },
+  "cost_model": "单边 4bp 基准；投产门槛按两倍成本（完整换手 16bp）",
+  "multiple_testing_family": "R1-R4 与 SC 跳格共 5 个主终点，BH-FDR q<0.10",
+  "candidate_ids": [
+    "jump_sc_daysession_15m",
+    "r1_d3",
+    "r2_sc_resid",
+    "r3_tail_flag",
+    "r4_curve_family",
+    "w8_w10_iron_ore",
+    "m_oos_increment"
+  ],
+  "git_commit_at_freeze": "7e44f44d918ed85b26b03b751a869a9591d0fd6e",
+  "sha256": {
+    "scripts/v3_defense_build.py": "f11973c8373dba2c4dff6c85a5899ddca50d74a1d0068cefddc80853ddb39911",
+    "scripts/v3_jump_factors.py": "ab57daf172bea8d910dbb17455fd70903effd928b2b035ea758ec10bbff57b6c",
+    "scripts/v3_jump_inference.py": "94be42130c2f18e69a49f6c66d6f65c3110c2d9bbe6fde911f5e07971c630726",
+    "scripts/v3_c8_incremental.py": "8d054e036de6e61256fd8d91bb4f6189f284fab5d7886663203daf4a61b933f1",
+    "scripts/v3_cross_section.py": "30f94efdeae617c4dce4bd1e93b2ee457c99268d3975dc17bd59e5911f8b219b",
+    "scripts/v3_prereg_tests.py": "11a2a027e576b91fc41093ace106313a0e4da54bc5a7020d48632a0081edf88a",
+    "scripts/v3_curve_family.py": "cdcdd155022c1cf48f130525f62290f24673bacbcad213862300ba695e7ec411",
+    "data/polymarket/features/cn_registry_v3.parquet": "bf09bbc9a9114a7238c893b0c95858097746cbd2be35e77f517ac76887173ff0",
+    "data/cn_futures/analysis/v3/xsec/theme_signals.parquet": "d66a2642a5f4d4ca0b5836c0041180c962f95b2a519a82ca3d9eb88eb17671b8",
+    "data/cn_futures/analysis/v3/prereg/r1_d3.parquet": "8aca794aca31c087b84092ba42dca23f7c8c91a152e286bd1d0668287aaddc2e",
+    "data/cn_futures/analysis/v3/prereg/r2_resid.parquet": "fc42e063f0919facbf007f7082809a9b01c98dd32c715dfd383f5f1fde6794f1",
+    "data/cn_futures/analysis/v3/prereg/r3_flag.parquet": "2cf6d7febb5fe4a77bf36b392ea62f2bb2435920a811ff88b4e003929b6c56c0",
+    "data/cn_futures/analysis/v3/prereg/r4_curve.parquet": "42470c4835cebe836b0eacfdc505a760c9bce49c108b0e067d6e5221cedc836b",
+    "data/intl/brent_daily.csv": "738201ae3a8a9b07e5431fdc5693e0c63ba53bad62da393a9f5e83708eef9bd8",
+    "data/intl/usdcnh_daily.csv": "07a456e1fa73f75e7e1fe552b81ad3870671e05cb7caa5efd825c0b24696a852",
+    "data/intl/curve_daily.parquet": "51420f4d8f44f3caccbeabe8d3551421e311540d1479031442d51e0a8d4b0fa6"
+  }
+}
