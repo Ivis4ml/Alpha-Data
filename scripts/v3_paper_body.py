@@ -42,24 +42,44 @@ def _fig_b64(name: str, caption: str) -> str:
             f"<figcaption>{caption}</figcaption></figure>")
 
 
+def _fmt(v: object, nd: int = 4, suffix: str = "") -> str:
+    """数值字段的展示格式化（None -> 不适用）。"""
+    if v is None:
+        return "不适用"
+    if isinstance(v, (int, float)):
+        return f"{v:+.{nd}f}{suffix}" if not float(v).is_integer() \
+            or suffix else f"{v:,.0f}{suffix}"
+    return str(v)
+
+
 def _summary_stats_block(rows: list[dict]) -> str:
     """统计量表：公式与取值统计量 + 直方图（与信号登记表同源渲染）。"""
     if not rows or "公式" not in rows[0]:
         return ""
-    sig_name = ["C8", "C8", "C8", "C8", "C8",
-                "E1 上行跳", "盘中事件跳", "孤立事件跳"]
     body_rows = []
-    for name, r in zip(sig_name, rows):
-        if r.get("取值均值", "不适用") != "不适用":
-            stats = (f"均值 {r['取值均值']}；中位数 {r['取值中位数']}；"
-                     f"标准差 {r['取值标准差']}；偏度 {r['取值偏度']}；"
-                     f"峰度 {r['取值峰度']}；{r['取值频率']}")
+    for r in rows:
+        if r.get("取值均值") is not None:
+            stats = (f"均值 {_fmt(r['取值均值'])}；中位数 "
+                     f"{_fmt(r['取值中位数'])}；标准差 "
+                     f"{_fmt(r['取值标准差'])}；偏度 {_fmt(r['取值偏度'], 3)}；"
+                     f"峰度 {_fmt(r['取值峰度'], 3)}；非零频率 "
+                     f"{r['取值非零频率']:.1%}")
         else:
-            stats = f"{r['取值valuecount']}；{r['取值频率']}"
+            vc = r.get("取值valuecount") or {}
+            total = sum(vc.values())
+            parts = "；".join(f"{k}: {v:,}（{v / total:.1%}）"
+                              for k, v in sorted(vc.items(),
+                                                 key=lambda x: x[0]))
+            stats = f"{parts}；触发频率 {r['取值非零频率']:.2%}"
+        base = (f"收对收累计 {r['品种全区间收对收累计收益']:+.1%}"
+                f"（剔换月日）；无条件均值 "
+                f"1'={r['品种无条件1分钟均值收益_bp']:+.3f} / "
+                f"3'={r['品种无条件3分钟均值收益_bp']:+.3f} / "
+                f"10'={r['品种无条件10分钟均值收益_bp']:+.3f} bp")
         body_rows.append(
-            f"<tr><td>{r['交易品种']}</td><td>{name}</td>"
+            f"<tr><td>{r['交易品种']}</td><td>{r['信号']}</td>"
             f"<td>{r['公式']}</td><td>{stats}</td>"
-            f"<td>{r['品种全区间平均收益']}</td></tr>")
+            f"<td>{base}</td></tr>")
     body = "\n".join(body_rows)
     fig = _fig_b64(
         "f_signal_summary_hist.png",
@@ -91,10 +111,26 @@ def signal_summary_table() -> str:
     表注中完整展示。"""
     if not _SUMMARY_JSON.exists():
         return ""
-    rows = json.loads(_SUMMARY_JSON.read_text())
+    obj = json.loads(_SUMMARY_JSON.read_text())
+    rows = obj["records"] if isinstance(obj, dict) else obj
+
+    def cell(r: dict, c: str) -> str:
+        v = r.get(c)
+        if v is None:
+            return "不适用"
+        if "IC" in c and isinstance(v, (int, float)):
+            return f"{v:+.4f}"
+        if "平均收益" in c and isinstance(v, (int, float)):
+            return f"{v:+.2f}bp"
+        if c == "信号月次数" and isinstance(v, (int, float)):
+            unit = ("个有效信号分钟/月" if r.get("信号类型") == "连续"
+                    else "次/月")
+            return f"约 {v:,.0f} {unit}" if v >= 100 else f"约 {v:.1f} {unit}"
+        return str(v)
+
     header = "".join(f"<th>{c}</th>" for c in _SUMMARY_COLS)
     body = "\n".join(
-        "<tr>" + "".join(f"<td>{r.get(c, '')}</td>" for c in _SUMMARY_COLS)
+        "<tr>" + "".join(f"<td>{cell(r, c)}</td>" for c in _SUMMARY_COLS)
         + "</tr>" for r in rows)
     return f"""
 <div class="tbl-title">表 2　已发现信号的标准结构登记（规定输出格式，

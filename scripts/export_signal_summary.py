@@ -1,28 +1,22 @@
-"""按导师规定的结构化格式导出已发现信号的汇总 JSON。
+"""按导师规定的结构化格式导出已发现信号的汇总 JSON（纯数字模式）。
 
-字段（每条记录）：交易品种 / 信号定义 / 信号频率 / 信号月次数 /
-连续信号 IC（发出后 1 / 3 / 10 分钟）/ 离散信号（取 1）后
-1 / 3 / 10 分钟平均收益。
+设计原则：**全部量化字段为 JSON number，不适用为 null**，文字只出现
+在本质为文字的字段（定义 / 公式 / 频率描述）；单位写进字段名后缀
+（_bp）或 meta.units，供下游程序直接处理。正文表格由渲染层
+（v3_paper_body）负责把数字格式化为展示文本。
 
-口径说明（全部数字构建时从 parquet 计算，不手抄）：
-- IC = 全时段 pooled RankIC（Spearman，ic_table 口径）。注意该口径按
-  分钟行计数，推断层面的降格与警示见报告 §12.14-12.15，此表为描述。
-- 离散信号"取 1"= 上行触发（E_up = 1 或事件跳 J_evt > 0），平均收益
-  为触发后前向收益均值（bp，未扣成本）。
-- 信号月次数：连续信号 = 有效信号分钟数 / 月；离散 = 触发次数 / 月。
-  月数按样本 125 个交易日 / 21 折算（约 5.95 个月）。
-
-扩展字段（同一 JSON 内，正文统计量表与直方图同源渲染）：公式 /
-取值统计量（连续：均值、中位数、标准差、偏度、峰度、直方图面板号；
-离散：value count 与触发频率）/ 品种全区间平均收益（无条件基准：
-样本期收对收累计与 1/3/10 分钟无条件均值，供离散条件均值对照）。
+输出结构：{"meta": {...单位与口径...}, "records": [8 条]}。
+规定的 10 个字段名保持原样（值为 number / null）；扩展字段：
+信号 / 信号类型 / 公式 / 取值均值 / 取值中位数 / 取值标准差 /
+取值偏度 / 取值峰度 / 取值非零频率 / 取值valuecount（对象或 null）/
+直方图文件 / 直方图面板 / 品种全区间收对收累计收益 /
+品种无条件{1,3,10}分钟均值收益_bp。
 
 产物：docs/signal_summary.json 与 docs/figures/f_signal_summary_hist.png
 """
 from __future__ import annotations
 
 import json
-from datetime import time as dtime
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +25,10 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DEF = ROOT / "data" / "cn_futures" / "analysis" / "v3" / "defense"
 JD = ROOT / "data" / "cn_futures" / "analysis" / "v3" / "jump"
+DAILY = ROOT / "data" / "cn_futures" / "daily"
 OUT = ROOT / "docs" / "signal_summary.json"
+HIST = "docs/figures/f_signal_summary_hist.png"
 N_MONTHS = 125 / 21
-NA = "不适用"
 
 C8_DEF = ("C8 未兑现缺口 = z(过去120交易分钟PM信念累积) − z(同窗期货"
           "收益累积)；复合信号，强度主要由期货反转腿承载，PM 腿增量"
@@ -47,28 +42,43 @@ JUMP_FORMULA = ("15 分钟桶 |Δℓ| > 3×1.4826×MAD_48桶 且桶内成交 ≥
                 "美元；J_evt = √usdc 加权的 orientation×Δℓ（(theme,ts) "
                 "折叠）；取 1 = J_evt > 0")
 
+META = {
+    "generated_by": "scripts/export_signal_summary.py",
+    "sample": "2026-01-05 .. 2026-07-13（125 个交易日）",
+    "units": {
+        "连续信号IC（发出后N分钟）": "pooled RankIC，无量纲（描述性；"
+                                     "推断以报告 §12.14-12.15 为准）",
+        "离散信号（取1）后N分钟平均收益": "bp（毛值、未扣成本）",
+        "信号月次数": "连续 = 有效信号分钟数/月；离散 = 取1触发次数/月"
+                      "（125 交易日按 21 折月）",
+        "取值非零频率": "非零（或触发）分钟占全部分钟比例，小数",
+        "品种全区间收对收累计收益": "小数（0.088 = +8.8%），剔换月日",
+        "品种无条件N分钟均值收益_bp": "bp，同品种全样本无条件基准",
+        "取值valuecount": "对象 {取值: 次数}，仅离散信号，连续为 null",
+    },
+    "na_convention": "不适用的字段一律为 null",
+}
 
-def baseline_of(prod: str) -> str:
-    """品种全区间平均收益：收对收累计 + 无条件 1/3/10 分钟均值。"""
-    daily = pd.read_parquet(ROOT / "data" / "cn_futures" / "daily"
-                            / f"{prod}.parquet",
+
+def rnd(x: float | None, nd: int = 4) -> float | None:
+    if x is None:
+        return None
+    x = float(x)
+    return None if not np.isfinite(x) else round(x, nd)
+
+
+def baseline_of(prod: str) -> dict:
+    daily = pd.read_parquet(DAILY / f"{prod}.parquet",
                             columns=["r_cc", "roll"])
     r = daily.loc[~daily["roll"].astype(bool), "r_cc"].dropna()
-    cum = float(np.expm1(r.sum()))
     panel = pd.read_parquet(DEF / f"panel_{prod}.parquet",
                             columns=["fwd_1", "fwd_3", "fwd_10"])
-    m = {h: float(panel[f"fwd_{h}"].mean()) for h in (1, 3, 10)}
-    return (f"样本期收对收累计 {cum:+.1%}（剔换月日）；无条件分钟均值 "
-            f"1'={m[1]*1e4:+.3f} / 3'={m[3]*1e4:+.3f} / "
-            f"10'={m[10]*1e4:+.3f} bp")
-
-
-def fmt_ic(x: float) -> str:
-    return f"{x:+.4f}"
-
-
-def fmt_bp(x: float) -> str:
-    return f"{x * 1e4:+.2f}bp"
+    return {
+        "品种全区间收对收累计收益": rnd(np.expm1(r.sum()), 4),
+        "品种无条件1分钟均值收益_bp": rnd(panel["fwd_1"].mean() * 1e4, 4),
+        "品种无条件3分钟均值收益_bp": rnd(panel["fwd_3"].mean() * 1e4, 4),
+        "品种无条件10分钟均值收益_bp": rnd(panel["fwd_10"].mean() * 1e4, 4),
+    }
 
 
 def cont_row(prod: str, ic: pd.DataFrame, panel: pd.DataFrame,
@@ -76,63 +86,69 @@ def cont_row(prod: str, ic: pd.DataFrame, panel: pd.DataFrame,
     sub = ic[(ic["product"] == prod) & (ic["signal"] == "C8")
              & (ic["scope"] == "all")].set_index("horizon")
     v = panel["C8"].replace(0.0, np.nan).dropna()
-    n_valid = int(len(v))
     return {
         "交易品种": prod,
+        "信号": "C8",
+        "信号类型": "连续",
         "信号定义": C8_DEF,
         "公式": C8_FORMULA,
         "信号频率": "逐分钟连续值（120 分钟滚动窗，跨段按交易分钟序）",
-        "信号月次数": f"约 {n_valid / N_MONTHS:,.0f} 个有效信号分钟/月",
-        "连续信号IC（发出后1分钟）": fmt_ic(sub.loc[1, "rank_ic"]),
-        "连续信号IC（发出后3分钟）": fmt_ic(sub.loc[3, "rank_ic"]),
-        "连续信号IC（发出后10分钟）": fmt_ic(sub.loc[10, "rank_ic"]),
-        "离散信号（取1）后1分钟平均收益": NA,
-        "离散信号（取1）后3分钟平均收益": NA,
-        "离散信号（取1）后10分钟平均收益": NA,
-        "取值均值": f"{v.mean():+.4f}",
-        "取值中位数": f"{v.median():+.4f}",
-        "取值标准差": f"{v.std():.4f}",
-        "取值偏度": f"{v.skew():+.3f}",
-        "取值峰度": f"{v.kurt():+.3f}",
-        "取值valuecount": NA,
-        "取值频率": f"有效分钟占比 {n_valid / len(panel):.1%}",
-        "直方图": f"docs/figures/f_signal_summary_hist.png 面板 {hist_panel}",
-        "品种全区间平均收益": baseline_of(prod),
+        "信号月次数": rnd(len(v) / N_MONTHS, 1),
+        "连续信号IC（发出后1分钟）": rnd(sub.loc[1, "rank_ic"]),
+        "连续信号IC（发出后3分钟）": rnd(sub.loc[3, "rank_ic"]),
+        "连续信号IC（发出后10分钟）": rnd(sub.loc[10, "rank_ic"]),
+        "离散信号（取1）后1分钟平均收益": None,
+        "离散信号（取1）后3分钟平均收益": None,
+        "离散信号（取1）后10分钟平均收益": None,
+        "取值均值": rnd(v.mean()),
+        "取值中位数": rnd(v.median()),
+        "取值标准差": rnd(v.std()),
+        "取值偏度": rnd(v.skew(), 3),
+        "取值峰度": rnd(v.kurt(), 3),
+        "取值非零频率": rnd(len(v) / len(panel)),
+        "取值valuecount": None,
+        "直方图文件": HIST,
+        "直方图面板": hist_panel,
+        **baseline_of(prod),
     }
 
 
 def e1_row(panel: pd.DataFrame) -> dict:
     m = panel["E_up"] == 1
-    n = int(m.sum())
+    n_up = int(m.sum())
     n_dn = int((panel["E_dn"] == 1).sum())
-    n_zero = int(len(panel) - n - n_dn)
-    vals = {h: float(panel.loc[m, f"fwd_{h}"].mean()) for h in (1, 3, 10)}
+    n_zero = int(len(panel) - n_up - n_dn)
     return {
         "交易品种": "SC",
-        "信号定义": "E1 上行价格跳：主题 1 分钟 logit 创新 > 3×1.4826×"
-                    "MAD48 稳健阈值（E_up = 1；下行对称、此处只登记取 1）",
-        "信号频率": "事件型（1 分钟粒度触发）",
-        "信号月次数": f"约 {n / N_MONTHS:.0f} 次/月",
-        "连续信号IC（发出后1分钟）": NA,
-        "连续信号IC（发出后3分钟）": NA,
-        "连续信号IC（发出后10分钟）": NA,
-        "离散信号（取1）后1分钟平均收益": fmt_bp(vals[1]),
-        "离散信号（取1）后3分钟平均收益": fmt_bp(vals[3]),
-        "离散信号（取1）后10分钟平均收益": fmt_bp(vals[10]),
+        "信号": "E1_up",
+        "信号类型": "离散",
+        "信号定义": "E1 上行价格跳：主题 1 分钟 logit 创新超稳健阈值"
+                    "（E_up = 1；下行对称、本行登记取 1）",
         "公式": E1_FORMULA,
-        "取值均值": NA, "取值中位数": NA, "取值标准差": NA,
-        "取值偏度": NA, "取值峰度": NA,
-        "取值valuecount": f"+1（上行跳）: {n:,} 次；−1（下行跳，"
-                          f"对称登记）: {n_dn:,} 次；0: {n_zero:,} 分钟",
-        "取值频率": f"触发占比 {(n + n_dn) / len(panel):.2%}"
-                    f"（取 1 占 {n / len(panel):.2%}）",
-        "直方图": "docs/figures/f_signal_summary_hist.png 面板 (f)",
-        "品种全区间平均收益": baseline_of("SC"),
+        "信号频率": "事件型（1 分钟粒度触发）",
+        "信号月次数": rnd(n_up / N_MONTHS, 1),
+        "连续信号IC（发出后1分钟）": None,
+        "连续信号IC（发出后3分钟）": None,
+        "连续信号IC（发出后10分钟）": None,
+        "离散信号（取1）后1分钟平均收益": rnd(
+            panel.loc[m, "fwd_1"].mean() * 1e4, 3),
+        "离散信号（取1）后3分钟平均收益": rnd(
+            panel.loc[m, "fwd_3"].mean() * 1e4, 3),
+        "离散信号（取1）后10分钟平均收益": rnd(
+            panel.loc[m, "fwd_10"].mean() * 1e4, 3),
+        "取值均值": None, "取值中位数": None, "取值标准差": None,
+        "取值偏度": None, "取值峰度": None,
+        "取值非零频率": rnd((n_up + n_dn) / len(panel)),
+        "取值valuecount": {"-1": n_dn, "0": n_zero, "1": n_up},
+        "直方图文件": HIST,
+        "直方图面板": "f",
+        **baseline_of("SC"),
     }
 
 
-def jump_row(prod: str, themes: list[str], isolated: bool, label: str,
-             session_day_only: bool, defn: str, formula: str) -> dict:
+def jump_row(prod: str, themes: list[str], isolated: bool,
+             session_day_only: bool, name: str, defn: str,
+             formula: str) -> dict:
     jumps = pd.read_parquet(JD / "jumps.parquet")
     panel = pd.read_parquet(DEF / f"panel_{prod}.parquet",
                             columns=["ts", "trade_date", "session",
@@ -155,37 +171,38 @@ def jump_row(prod: str, themes: list[str], isolated: bool, label: str,
     if session_day_only:
         ev = ev[(ev["delay"] <= 2) & (ev["sess"] == "day")]
     up = ev[ev["J_evt"] > 0]
-    n = int(len(up))
-    n_dn = int((ev["J_evt"] < 0).sum())
-    vals = {}
+    n_up, n_dn = int(len(up)), int((ev["J_evt"] < 0).sum())
+    vals: dict[int, float | None] = {}
     for h in (1, 3, 10):
         f = panel[f"fwd_{h}"].to_numpy()[up["pos"]]
-        vals[h] = float(np.nanmean(f)) if np.isfinite(f).any() else np.nan
+        vals[h] = (float(np.nanmean(f)) * 1e4
+                   if np.isfinite(f).any() else None)
     return {
         "交易品种": prod,
+        "信号": name,
+        "信号类型": "离散",
         "信号定义": defn,
-        "信号频率": "事件型（PM 15 分钟桶检出、映射到期货分钟网格）",
-        "信号月次数": f"约 {n / N_MONTHS:.1f} 次/月（取 1，即上行跳）",
-        "连续信号IC（发出后1分钟）": NA,
-        "连续信号IC（发出后3分钟）": NA,
-        "连续信号IC（发出后10分钟）": NA,
-        "离散信号（取1）后1分钟平均收益": fmt_bp(vals[1]),
-        "离散信号（取1）后3分钟平均收益": fmt_bp(vals[3]),
-        "离散信号（取1）后10分钟平均收益": fmt_bp(vals[10]),
         "公式": formula,
-        "取值均值": NA, "取值中位数": NA, "取值标准差": NA,
-        "取值偏度": NA, "取值峰度": NA,
-        "取值valuecount": f"+1（上行事件跳）: {n} 次；−1（下行）: "
-                          f"{n_dn} 次",
-        "取值频率": f"约 {(n + n_dn) / N_MONTHS:.1f} 次/月（双向合计）",
-        "直方图": "docs/figures/f_signal_summary_hist.png 面板 (f)",
-        "品种全区间平均收益": baseline_of(prod),
+        "信号频率": "事件型（PM 15 分钟桶检出、映射到期货分钟网格）",
+        "信号月次数": rnd(n_up / N_MONTHS, 2),
+        "连续信号IC（发出后1分钟）": None,
+        "连续信号IC（发出后3分钟）": None,
+        "连续信号IC（发出后10分钟）": None,
+        "离散信号（取1）后1分钟平均收益": rnd(vals[1], 3),
+        "离散信号（取1）后3分钟平均收益": rnd(vals[3], 3),
+        "离散信号（取1）后10分钟平均收益": rnd(vals[10], 3),
+        "取值均值": None, "取值中位数": None, "取值标准差": None,
+        "取值偏度": None, "取值峰度": None,
+        "取值非零频率": rnd((n_up + n_dn) / len(panel), 6),
+        "取值valuecount": {"-1": n_dn, "1": n_up},
+        "直方图文件": HIST,
+        "直方图面板": "f",
+        **baseline_of(prod),
     }
 
 
 def make_histogram(panels: dict[str, pd.Series],
                    discrete_counts: dict[str, tuple[int, int]]) -> None:
-    """(a)-(e) 五品种 C8 直方图；(f) 离散信号 value count 条形图。"""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -194,8 +211,7 @@ def make_histogram(panels: dict[str, pd.Series],
     import pub_style
     pub_style.setup(cn_font=True)
     fig, axes = plt.subplots(2, 3, figsize=(11, 6.2))
-    for ax, (prod, v), tag in zip(axes.flat, panels.items(),
-                                  "abcde"):
+    for ax, (prod, v), tag in zip(axes.flat, panels.items(), "abcde"):
         ax.hist(v.clip(-6, 6), bins=60, color="#3b6db3", alpha=0.85)
         ax.set_title(f"({tag}) C8 x {prod}（均值 {v.mean():+.3f}，"
                      f"σ {v.std():.2f}）", fontsize=9)
@@ -225,38 +241,38 @@ def main() -> int:
     for prod, tag in zip(("SC", "AU", "AG", "CU", "M"), "abcde"):
         panel = pd.read_parquet(DEF / f"panel_{prod}.parquet",
                                 columns=["C8"])
-        rows.append(cont_row(prod, ic, panel, f"({tag})"))
+        rows.append(cont_row(prod, ic, panel, tag))
         hist_data[prod] = panel["C8"].replace(0.0, np.nan).dropna()
     sc_panel = pd.read_parquet(DEF / "panel_SC.parquet",
                                columns=["E_up", "E_dn",
                                         "fwd_1", "fwd_3", "fwd_10"])
     rows.append(e1_row(sc_panel))
     rows.append(jump_row(
-        "SC", ["mideast_conflict", "oil_price"], False, "盘中跳", True,
+        "SC", ["mideast_conflict", "oil_price"], False, True,
+        "JUMP_SC_day",
         "SC 盘中日盘事件跳（取 1 = 上行）：中东/油价主题 E1 口径跳、"
         "(theme,ts) 事件折叠、映射延迟 ≤2 分钟且落在日盘；置换单方法"
         "支持的探索候选（§12.15），毛收益未过 2× 成本门槛",
         JUMP_FORMULA + "；限映射延迟 ≤2 分钟且落在日盘"))
     rows.append(jump_row(
-        "M", ["us_china_trade"], True, "孤立跳", False,
+        "M", ["us_china_trade"], True, False,
+        "JUMP_M_isolated",
         "M 孤立事件跳（取 1 = 上行）：贸易主题 E1 口径跳且同桶无其他"
         "市场共跳（n_cojump=0）；低功效不显著（§12.15），候选不升级",
         JUMP_FORMULA + "；限 n_cojump = 0（孤立）"))
 
-    def _vc_pair(r: dict) -> tuple[int, int]:
-        import re as _re
-        nums = _re.findall(r"([\d,]+) 次", r["取值valuecount"])
-        return (int(nums[0].replace(",", "")),
-                int(nums[1].replace(",", "")))
-
     discrete_counts = {
-        "E1xSC": _vc_pair(rows[5]),
-        "SC盘中跳": _vc_pair(rows[6]),
-        "M孤立跳": _vc_pair(rows[7]),
+        "E1xSC": (rows[5]["取值valuecount"]["1"],
+                  rows[5]["取值valuecount"]["-1"]),
+        "SC盘中跳": (rows[6]["取值valuecount"]["1"],
+                    rows[6]["取值valuecount"]["-1"]),
+        "M孤立跳": (rows[7]["取值valuecount"]["1"],
+                   rows[7]["取值valuecount"]["-1"]),
     }
     make_histogram(hist_data, discrete_counts)
-    OUT.write_text(json.dumps(rows, ensure_ascii=False, indent=2))
-    print(f"written {OUT}（{len(rows)} 条，含扩展字段）")
+    OUT.write_text(json.dumps({"meta": META, "records": rows},
+                              ensure_ascii=False, indent=2))
+    print(f"written {OUT}（{len(rows)} 条，纯数字模式）")
     return 0
 
 
