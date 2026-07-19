@@ -713,6 +713,71 @@ def sec_event_cooccur() -> str:
 """
 
 
+# ------------------------------------- 第一部分 §12.12 截面检验
+def sec_xsec() -> str:
+    """§12.12：P2 截面检验（吸收的识别升级 + 预测的第三层否定证据）。"""
+    xdir = SUPP.parent / "xsec"
+    p = xdir / "summary.parquet"
+    if not p.exists():
+        return ""
+    s = pd.read_parquet(p).set_index("cell")
+
+    def row(cell: str, label: str) -> str:
+        r = s.loc[cell]
+        star = "✦" if abs(r["hac_t"]) >= 2 else ""
+        ex = (f"{_f(r['mean_exjun'])} (t {_f(r['t_exjun'], 2)})"
+              if pd.notna(r.get("mean_exjun")) else "—")
+        return (f"<tr><td>{label}{star}</td><td>{_f(r['mean'])}</td>"
+                f"<td>{_f(r['hac_t'], 2)}</td><td>{_f(r['icir_daily'], 2)}</td>"
+                f"<td>{int(r['n_days'])}</td><td>{int(r['n_cs_med'])}</td>"
+                f"<td>{ex}</td></tr>")
+
+    tab = _table([
+        row("D1_absorb|score_e1", "D1 吸收 × E1 经济先验"),
+        row("D1_absorb|score_e2", "D1 吸收 × E2 估计 beta"),
+        row("D2_predict|score_e1", "D2 日盘预测 × E1 经济先验"),
+        row("D2_predict|score_e2", "D2 日盘预测 × E2 估计 beta"),
+    ], "<th>登记格</th><th>截面 RankIC</th><th>HAC t</th><th>日度 ICIR</th>"
+       "<th>天数</th><th>截面规模(中位)</th><th>剔除 6 月</th>", "wraptext")
+
+    ls1, ls2 = s.loc["D2_LS|score_e1"], s.loc["D2_LS|score_e2"]
+    return f"""
+<h3>12.12 截面检验：暴露度排序与日共同因子的差分（P2）</h3>
+<p>此前全部检验为单品种时序，每天贡献 1 个观测；§12.2 的安慰剂检验又
+表明原始吸收含大量宏观共同因子。本节把检验改写为逐日<b>截面</b>：把
+88 个品种按主题暴露度打分排序，问"暴露度高的品种是否在同一天内比暴露
+度低的品种更多地朝信号方向定价"。逐日排序天然差分掉当日的全市场共同
+冲击（风险偏好、美元、商品 beta），恰好封堵共同因子解释；每个逐日
+RankIC 由约 40-70 个品种的截面支撑。</p>
+<p><b>事前登记 6 格，不扩展</b>：两个目标（D1 吸收验证 = 开盘前累积
+收益 ln(开盘/前收)，与信号同窗；D2 可交易 = 当日日盘收益，信号在
+09:00 开盘前已知）× 两种载荷（E1 经济先验：注册方向锚点 + 板块外推，
+无任何估计；E2 展开窗单变量 beta：min 40 日、严格用 t 之前数据）的
+截面 IC，加 D2 的两个五分位多空。信号为主题层 s_pre（与品种无关），
+z 归一只用 t−1 前历史；宇宙 = 过去 20 日成交额中位数 ≥ 10 亿元且非
+换月日（含股指与国债期货）。产物 <code>analysis/v3/xsec/</code>，
+脚本 <code>v3_cross_section.py</code>。</p>
+{tab}
+<p>（✦ = |HAC t| ≥ 2。）<b>D1：吸收在截面上成立且强</b>：经济先验
+（无估计成分）t = 4.0、估计 beta t = 5.0，剔除 6 月冲突高峰后仍为
+3.2 / 3.9，3-7 月逐月均值全部为正。与 §12.2 合读：安慰剂品种的假阳性
+来自日级共同因子，而截面差分后暴露度排序依然显著，说明吸收含有真实的
+品种特异成分，这是对结论一识别强度的实质提升。</p>
+{_fig("f_supp_xsec.png",
+      "(a) 六格汇总：吸收（蓝）两种载荷下截面 RankIC 均显著为正，日盘"
+      "预测（红）与零不可分；(b) 逐月剖面：吸收各月为正、非单一冲突期"
+      "产物，预测无任何月份稳定。")}
+<p><b>D2：日盘残余预测力为零</b>：E1 IC +0.010（t 0.30）、E2 −0.054
+（t −1.31），五分位多空 {_f(float(ls1['mean']), 1)} bp/日（t
+{_f(float(ls1['hac_t']), 2)}）与 {_f(float(ls2['mean']), 1)} bp/日（t
+{_f(float(ls2['hac_t']), 2)}）。次级观察：E2 侧剔除 6 月后为 −0.083
+（t −2.17），若存在结构则是吸收后回吐的反向，按单格纪律不作为结论、
+留待扩展样本。至此"开盘后无残余方向信息"有三层互证：单品种时序
+（§7.1 FDR 全灭）、分钟级（附录三 §4.3 几分钟内衰减）、截面（本节
+IC≈0）。</p>
+"""
+
+
 # ------------------------------------- 第一部分 §12.11 检验总量核算
 def sec_test_count() -> str:
     """§12.11：全报告检验单元总账（多重性透明度）。"""

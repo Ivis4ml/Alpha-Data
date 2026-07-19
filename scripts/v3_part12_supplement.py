@@ -986,6 +986,8 @@ def test_count_audit() -> pd.DataFrame:
          "event_factor_ic.parquet", None),
         ("supp", "跨族复合 XF", V3_DIR / "jump" / "composite_ic.parquet",
          None),
+        ("supp", "P2 截面检验（登记 6 格）", V3_DIR / "xsec" /
+         "summary.parquet", None),
     ]
     rows: list[dict] = []
     for part, family, path, flt in inventory:
