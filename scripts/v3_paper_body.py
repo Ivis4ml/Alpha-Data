@@ -25,9 +25,16 @@ _SUMMARY_COLS = [
     "交易品种", "信号定义", "信号频率", "信号月次数",
     "连续信号IC（发出后1分钟）", "连续信号IC（发出后3分钟）",
     "连续信号IC（发出后10分钟）",
+    "__ICIR__",
     "离散信号（取1）后1分钟平均收益", "离散信号（取1）后3分钟平均收益",
     "离散信号（取1）后10分钟平均收益",
+    "__SIGNED_IC__",
 ]
+
+_VIRTUAL_HEADERS = {
+    "__ICIR__": "连续信号ICIR（1/3/10分钟，日度）",
+    "__SIGNED_IC__": "离散信号符号RankIC（1/3/10分钟）",
+}
 
 
 def _fig_b64(name: str, caption: str) -> str:
@@ -115,6 +122,16 @@ def signal_summary_table() -> str:
     rows = obj["records"] if isinstance(obj, dict) else obj
 
     def cell(r: dict, c: str) -> str:
+        if c == "__ICIR__":
+            vs = [r.get(f"连续信号ICIR（发出后{h}分钟）") for h in (1, 3, 10)]
+            return ("不适用" if vs[0] is None else
+                    " / ".join(f"{v:+.2f}" for v in vs)
+                    + f"（n={r.get('IC统计天数')}日）")
+        if c == "__SIGNED_IC__":
+            vs = [r.get(f"离散信号符号RankIC（发出后{h}分钟）")
+                  for h in (1, 3, 10)]
+            return ("不适用" if vs[0] is None else
+                    " / ".join(f"{v:+.4f}" for v in vs))
         v = r.get(c)
         if v is None:
             return "不适用"
@@ -128,7 +145,8 @@ def signal_summary_table() -> str:
             return f"约 {v:,.0f} {unit}" if v >= 100 else f"约 {v:.1f} {unit}"
         return str(v)
 
-    header = "".join(f"<th>{c}</th>" for c in _SUMMARY_COLS)
+    header = "".join(
+        f"<th>{_VIRTUAL_HEADERS.get(c, c)}</th>" for c in _SUMMARY_COLS)
     body = "\n".join(
         "<tr>" + "".join(f"<td>{cell(r, c)}</td>" for c in _SUMMARY_COLS)
         + "</tr>" for r in rows)
@@ -148,10 +166,19 @@ def signal_summary_table() -> str:
 （受 Git 跟踪），本表在报告构建时直接读取该 JSON 渲染，正文与文件
 必然一致。重算命令：<code>python scripts/export_signal_summary.py
 &amp;&amp; python scripts/build_thesis_html.py</code>。口径：IC 为
-全时段 pooled RankIC（描述性登记，推断结论以附录 §12.14-12.15
-为准）；离散信号"取 1"指上行触发，平均收益为毛值（bp、未扣成本）；
+全时段 pooled RankIC，ICIR = 日度 IC 均值 / 日度 IC 标准差（均为
+描述性登记，推断结论以附录 §12.14-12.15 为准）；离散信号另给
+signed 指示变量的符号 RankIC（与 X 族同口径）；离散信号"取 1"指上行触发，平均收益为毛值（bp、未扣成本）；
 月次数按样本 125 个交易日折算（约 5.95 个月）；"不适用"为该类
 信号不适用的字段的显式填充。</div>
+
+{_fig_b64("f_signal_summary_ic.png",
+           "表 2 信号的 IC 衰减剖面。(a) C8 五品种 pooled RankIC 随"
+           "视界（1/2/3/5/10/15 分钟）的衰减；(b) 同一信号的日度 ICIR"
+           "（IC 稳定性，评审重点指标）；(c) 三个离散信号的符号 "
+           "RankIC（signed 指示变量与前向收益的 pooled 秩相关，与 X 族"
+           "同口径）。口径提示：pooled 与 ICIR 为描述性登记，推断结论"
+           "以附录 §12.14-12.15 为准。")}
 
 {_summary_stats_block(rows)}
 

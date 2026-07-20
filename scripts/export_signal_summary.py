@@ -55,6 +55,12 @@ META = {
         "品种全区间收对收累计收益": "小数（0.088 = +8.8%），剔换月日",
         "品种无条件N分钟均值收益_bp": "bp，同品种全样本无条件基准",
         "取值valuecount": "对象 {取值: 次数}，仅离散信号，连续为 null",
+        "连续信号ICIR（发出后N分钟）": "日度 IC 均值/日度 IC 标准差，"
+                                       "无量纲，仅连续信号",
+        "IC统计天数": "日度 IC 序列的天数",
+        "离散信号符号RankIC（发出后N分钟）": "signed 指示变量（+1/0/-1）"
+                                             "与前向收益的 pooled RankIC"
+                                             "（与 X 族同口径），仅离散",
     },
     "na_convention": "不适用的字段一律为 null",
 }
@@ -97,9 +103,16 @@ def cont_row(prod: str, ic: pd.DataFrame, panel: pd.DataFrame,
         "连续信号IC（发出后1分钟）": rnd(sub.loc[1, "rank_ic"]),
         "连续信号IC（发出后3分钟）": rnd(sub.loc[3, "rank_ic"]),
         "连续信号IC（发出后10分钟）": rnd(sub.loc[10, "rank_ic"]),
+        "连续信号ICIR（发出后1分钟）": rnd(sub.loc[1, "icir"], 3),
+        "连续信号ICIR（发出后3分钟）": rnd(sub.loc[3, "icir"], 3),
+        "连续信号ICIR（发出后10分钟）": rnd(sub.loc[10, "icir"], 3),
+        "IC统计天数": int(sub.loc[1, "n_days"]),
         "离散信号（取1）后1分钟平均收益": None,
         "离散信号（取1）后3分钟平均收益": None,
         "离散信号（取1）后10分钟平均收益": None,
+        "离散信号符号RankIC（发出后1分钟）": None,
+        "离散信号符号RankIC（发出后3分钟）": None,
+        "离散信号符号RankIC（发出后10分钟）": None,
         "取值均值": rnd(v.mean()),
         "取值中位数": rnd(v.median()),
         "取值标准差": rnd(v.std()),
@@ -113,12 +126,27 @@ def cont_row(prod: str, ic: pd.DataFrame, panel: pd.DataFrame,
     }
 
 
-def e1_row(panel: pd.DataFrame) -> dict:
+def signed_rank_ic(signed: np.ndarray, panel: pd.DataFrame,
+                   horizons: tuple[int, ...] = (1, 3, 10)) -> dict[int,
+                                                                   float]:
+    """signed 指示变量与前向收益的 pooled RankIC（与 X 族同口径）。"""
+    from scipy.stats import spearmanr
+    out = {}
+    for h in horizons:
+        f = panel[f"fwd_{h}"].to_numpy()
+        ok = np.isfinite(f)
+        out[h] = float(spearmanr(signed[ok], f[ok]).statistic)
+    return out
+
+
+def e1_row(panel: pd.DataFrame) -> tuple[dict, np.ndarray, pd.DataFrame]:
     m = panel["E_up"] == 1
     n_up = int(m.sum())
     n_dn = int((panel["E_dn"] == 1).sum())
     n_zero = int(len(panel) - n_up - n_dn)
-    return {
+    signed = (panel["E_up"] - panel["E_dn"]).to_numpy()
+    sic = signed_rank_ic(signed, panel)
+    row = {
         "交易品种": "SC",
         "信号": "E1_up",
         "信号类型": "离散",
@@ -136,6 +164,13 @@ def e1_row(panel: pd.DataFrame) -> dict:
             panel.loc[m, "fwd_3"].mean() * 1e4, 3),
         "离散信号（取1）后10分钟平均收益": rnd(
             panel.loc[m, "fwd_10"].mean() * 1e4, 3),
+        "连续信号ICIR（发出后1分钟）": None,
+        "连续信号ICIR（发出后3分钟）": None,
+        "连续信号ICIR（发出后10分钟）": None,
+        "IC统计天数": None,
+        "离散信号符号RankIC（发出后1分钟）": rnd(sic[1]),
+        "离散信号符号RankIC（发出后3分钟）": rnd(sic[3]),
+        "离散信号符号RankIC（发出后10分钟）": rnd(sic[10]),
         "取值均值": None, "取值中位数": None, "取值标准差": None,
         "取值偏度": None, "取值峰度": None,
         "取值非零频率": rnd((n_up + n_dn) / len(panel)),
@@ -144,15 +179,17 @@ def e1_row(panel: pd.DataFrame) -> dict:
         "直方图面板": "f",
         **baseline_of("SC"),
     }
+    return row, signed, panel
 
 
 def jump_row(prod: str, themes: list[str], isolated: bool,
              session_day_only: bool, name: str, defn: str,
-             formula: str) -> dict:
+             formula: str) -> tuple[dict, np.ndarray, pd.DataFrame]:
     jumps = pd.read_parquet(JD / "jumps.parquet")
     panel = pd.read_parquet(DEF / f"panel_{prod}.parquet",
                             columns=["ts", "trade_date", "session",
-                                     "fwd_1", "fwd_3", "fwd_10"])
+                                     "fwd_1", "fwd_2", "fwd_3", "fwd_5",
+                                     "fwd_10", "fwd_15"])
     jp = jumps[jumps["theme"].isin(themes)]
     if isolated:
         jp = jp[jp["n_cojump"] == 0]
@@ -177,7 +214,10 @@ def jump_row(prod: str, themes: list[str], isolated: bool,
         f = panel[f"fwd_{h}"].to_numpy()[up["pos"]]
         vals[h] = (float(np.nanmean(f)) * 1e4
                    if np.isfinite(f).any() else None)
-    return {
+    signed = np.zeros(len(panel))
+    signed[ev["pos"].to_numpy()] = np.sign(ev["J_evt"].to_numpy())
+    sic = signed_rank_ic(signed, panel)
+    row = {
         "交易品种": prod,
         "信号": name,
         "信号类型": "离散",
@@ -191,6 +231,13 @@ def jump_row(prod: str, themes: list[str], isolated: bool,
         "离散信号（取1）后1分钟平均收益": rnd(vals[1], 3),
         "离散信号（取1）后3分钟平均收益": rnd(vals[3], 3),
         "离散信号（取1）后10分钟平均收益": rnd(vals[10], 3),
+        "连续信号ICIR（发出后1分钟）": None,
+        "连续信号ICIR（发出后3分钟）": None,
+        "连续信号ICIR（发出后10分钟）": None,
+        "IC统计天数": None,
+        "离散信号符号RankIC（发出后1分钟）": rnd(sic[1]),
+        "离散信号符号RankIC（发出后3分钟）": rnd(sic[3]),
+        "离散信号符号RankIC（发出后10分钟）": rnd(sic[10]),
         "取值均值": None, "取值中位数": None, "取值标准差": None,
         "取值偏度": None, "取值峰度": None,
         "取值非零频率": rnd((n_up + n_dn) / len(panel), 6),
@@ -199,6 +246,7 @@ def jump_row(prod: str, themes: list[str], isolated: bool,
         "直方图面板": "f",
         **baseline_of(prod),
     }
+    return row, signed, panel
 
 
 def make_histogram(panels: dict[str, pd.Series],
@@ -234,6 +282,49 @@ def make_histogram(panels: dict[str, pd.Series],
     print(f"histogram -> {out}")
 
 
+def make_ic_decay(ic: pd.DataFrame,
+                  signed_series: dict[str, tuple[np.ndarray,
+                                                 pd.DataFrame]]) -> None:
+    """IC 衰减三联图：(a) C8 RankIC；(b) C8 日度 ICIR；(c) 离散符号 RankIC。"""
+    from scipy.stats import spearmanr
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import pub_style
+    pub_style.setup(cn_font=True)
+    hs = [1, 2, 3, 5, 10, 15]
+    fig, axes = plt.subplots(1, 3, figsize=(11, 3.4))
+    for prod in ("SC", "AU", "AG", "CU", "M"):
+        sub = ic[(ic["product"] == prod) & (ic["signal"] == "C8")
+                 & (ic["scope"] == "all")].set_index("horizon")
+        axes[0].plot(hs, [sub.loc[h, "rank_ic"] for h in hs],
+                     marker="o", ms=3, label=prod)
+        axes[1].plot(hs, [sub.loc[h, "icir"] for h in hs],
+                     marker="o", ms=3, label=prod)
+    axes[0].set_title("(a) C8 pooled RankIC 衰减", fontsize=9)
+    axes[1].set_title("(b) C8 日度 ICIR 衰减", fontsize=9)
+    for name, (signed, panel) in signed_series.items():
+        vals = []
+        for h in hs:
+            f = panel[f"fwd_{h}"].to_numpy()
+            okm = np.isfinite(f)
+            vals.append(float(spearmanr(signed[okm], f[okm]).statistic))
+        axes[2].plot(hs, vals, marker="o", ms=3, label=name)
+    axes[2].set_title("(c) 离散信号符号 RankIC 衰减", fontsize=9)
+    for ax in axes:
+        ax.axhline(0, color="k", lw=0.6)
+        ax.set_xlabel("发出后分钟数")
+        ax.legend(fontsize=7)
+        ax.tick_params(labelsize=8)
+    fig.tight_layout()
+    out = ROOT / "docs" / "figures" / "f_signal_summary_ic.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"ic decay -> {out}")
+
+
 def main() -> int:
     ic = pd.read_parquet(DEF / "ic_table.parquet")
     rows = []
@@ -244,22 +335,29 @@ def main() -> int:
         rows.append(cont_row(prod, ic, panel, tag))
         hist_data[prod] = panel["C8"].replace(0.0, np.nan).dropna()
     sc_panel = pd.read_parquet(DEF / "panel_SC.parquet",
-                               columns=["E_up", "E_dn",
-                                        "fwd_1", "fwd_3", "fwd_10"])
-    rows.append(e1_row(sc_panel))
-    rows.append(jump_row(
+                               columns=["E_up", "E_dn", "fwd_1", "fwd_2",
+                                        "fwd_3", "fwd_5", "fwd_10",
+                                        "fwd_15"])
+    e1, e1_signed, e1_panel = e1_row(sc_panel)
+    rows.append(e1)
+    j_sc, sc_signed, sc_jpanel = jump_row(
         "SC", ["mideast_conflict", "oil_price"], False, True,
         "JUMP_SC_day",
         "SC 盘中日盘事件跳（取 1 = 上行）：中东/油价主题 E1 口径跳、"
         "(theme,ts) 事件折叠、映射延迟 ≤2 分钟且落在日盘；置换单方法"
         "支持的探索候选（§12.15），毛收益未过 2× 成本门槛",
-        JUMP_FORMULA + "；限映射延迟 ≤2 分钟且落在日盘"))
-    rows.append(jump_row(
+        JUMP_FORMULA + "；限映射延迟 ≤2 分钟且落在日盘")
+    rows.append(j_sc)
+    j_m, m_signed, m_jpanel = jump_row(
         "M", ["us_china_trade"], True, False,
         "JUMP_M_isolated",
         "M 孤立事件跳（取 1 = 上行）：贸易主题 E1 口径跳且同桶无其他"
         "市场共跳（n_cojump=0）；低功效不显著（§12.15），候选不升级",
-        JUMP_FORMULA + "；限 n_cojump = 0（孤立）"))
+        JUMP_FORMULA + "；限 n_cojump = 0（孤立）")
+    rows.append(j_m)
+    make_ic_decay(ic, {"E1xSC": (e1_signed, e1_panel),
+                       "SC盘中跳": (sc_signed, sc_jpanel),
+                       "M孤立跳": (m_signed, m_jpanel)})
 
     discrete_counts = {
         "E1xSC": (rows[5]["取值valuecount"]["1"],
