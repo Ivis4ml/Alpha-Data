@@ -1,0 +1,17 @@
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llp{6.4cm}p{4.5cm}}
+\toprule
+信号 & 名称 & 公式 & 构造意图 \\
+\midrule
+N1 & 主题信念创新 & $\displaystyle N1_t$ & 分钟级 logit 概率变化的加权聚合，全库基元 \\
+N2 & 15 分钟累积创新 & $\displaystyle \sum_{u=t-14}^{t} N1_u$ & 单分钟创新噪声大，短窗求和提高信噪比 \\
+N3 & 签名流强度 & $\displaystyle z_{4800}\!\Big(\sum_{u=t-14}^{t} f_u\Big)$ & 以美元计的方向性成交流，与价格变化互补 \\
+N4 & 创新标准分 & $\displaystyle z_{4800}(N2_t)$ & 把量纲不可比的 logit 变化化为可跨品种比较的数值 \\
+N5 & 流不平衡比 & $\displaystyle \Big(\sum_{u=t-14}^{t} f_u\Big)\Big/\Big(\sum_{u=t-14}^{t} U_u\Big)$ & 方向性占比，剔除总量水平的影响，取值天然有界 \\
+N6 & 成交强度 & $\displaystyle z_{4800}\!\big(\ln(1+\textstyle\sum_{u=t-14}^{t} n_u)\big)$ & 笔数强度衡量关注度，对数化压缩长尾 \\
+N7 & 多主题复合创新 & $\displaystyle z_{4800}\!\Big(\sum_{\theta}\sum_{u=t-14}^{t} N1^{\theta}_u\Big)$ & 跨主题等权合成，捕捉宏观级共同冲击 \\
+N8 & 市场广度 & $\displaystyle z_{4800}\!\Big(\tfrac{1}{15}\sum_{u=t-14}^{t} M_u\Big)$ & 参与市场数衡量信息是集中于个别市场还是普遍 \\
+N9 & 信念波动 & $\displaystyle z_{4800}\!\big(\mathrm{sd}_{60}(N1)\big)$ & 二阶量：信念本身的不稳定程度（分歧度代理） \\
+N10 & 信念不确定度 & $\displaystyle z_{4800}\!\Big(\sum_{u=t-14}^{t} |N1_u|\Big)$ & 无向活跃度，与 N2 的有向量配对识别方向性 vs 纯噪声 \\
+\bottomrule
+\end{tabular}

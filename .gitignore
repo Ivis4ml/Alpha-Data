@@ -23,3 +23,10 @@ venv/
 
 # 系统
 .DS_Store
+
+# LaTeX 编译中间产物（精炼版正文）
+docs/concise/*.aux
+docs/concise/*.log
+docs/concise/*.out
+docs/concise/*.toc
+docs/concise/main.pdf
