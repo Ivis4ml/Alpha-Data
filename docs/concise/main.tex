@@ -1,0 +1,447 @@
+% !TEX program = xelatex
+% 精炼版：Polymarket 数据获取、处理与信号登记
+% 编译：xelatex main.tex（两遍）；表格体由 make_concise_table.py 生成
+\documentclass[11pt, a4paper]{ctexart}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{xcolor}
+\usepackage[colorlinks=true, linkcolor=blue!50!black,
+            urlcolor=blue!50!black]{hyperref}
+\usepackage{enumitem}
+\setlist{nosep, leftmargin=2em}
+\captionsetup{font=small, labelfont=bf}
+\renewcommand{\arraystretch}{1.25}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\eqdef}{\;\triangleq\;}
+
+\title{\bfseries Polymarket 数据获取、处理与信号登记\\
+\large 中国商品期货关联研究·精炼版（数据方法为主体）}
+\author{Alpha-Data 项目}
+\date{2026 年 7 月（样本冻结于 2026-07-18）}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+本文是完整研究报告（\code{cn\_futures\_polymarket\_report.html}，151 页）
+的精炼版：以 \textbf{Polymarket 数据的获取与处理}为主体逐条给出严格定义
+与构造方法，实验结果只保留模块化的关键结论。数据资产：链上逐笔成交
+855{,}614{,}453 笔（约 265 亿美元、约 69 万个市场、2022-11-21 至
+2026-07-14），与 88 个品种的中国期货 1 分钟数据（3{,}496{,}950 根
+K 线）在 125 个重叠交易日（2026-01-05 至 07-13）上对齐。核心结论一句话：
+Polymarket 的信息含量真实存在，以\textbf{闭市时段的同期吸收}进入中国
+期货开盘价格并在开盘后数分钟内耗尽；经五轮复核（含两轮外部审计）与
+证伪型检验，\textbf{本研究不含已验证的可交易 alpha}，实盘配置为零仓位。
+\end{abstract}
+
+\tableofcontents
+
+%=====================================================================
+\section{数据资产总览与本文定位}
+
+\begin{table}[h!]\centering\small
+\caption{数据资产一览}
+\begin{tabular}{llll}
+\toprule
+数据层 & 规模 & 时间范围 & 来源 \\
+\midrule
+Polymarket 逐笔成交 & 855{,}614{,}453 笔 / \$26.5B & 2022-11-21..2026-07-14 & 链上（两段拼接） \\
+市场元数据与结算 & 约 69 万市场；结算 455/492 & 同上 & 链上 ConditionResolution \\
+登记主题市场 & 8 主题 / 492 市场 & 事前注册 & \code{cn\_registry\_v3.parquet} \\
+中国期货分钟线 & 88 品种 / 3.50M 根 & 2026-01-05..07-13 & 本地交付 CSV \\
+国际基准 & USO/GLD 等 12 ETF 分钟 & 同重叠期 & 美股分钟库 \\
+补充数据腿 & Brent/USDCNH 日频；逐合约日结算 & 见 \S\ref{sec:intl} & 免费公开接口 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent 本文写作原则：宁少勿糊。第 \ref{sec:acquire}--\ref{sec:process}
+节（数据获取与处理）是主体，每个定义可直接据此复现；第 \ref{sec:signal}
+节给出登记信号的严格定义与规定格式登记表；第 \ref{sec:results} 节把全部
+实验压缩为模块化结论卡片，展开论证一律指向完整版对应章节（记法
+\S$N$ = 完整版附录第 $N$ 节，§三-$N$ = 完整版附录三）。
+
+%=====================================================================
+\section{Polymarket 数据获取}\label{sec:acquire}
+
+\subsection{什么在链上，什么不在}
+
+Polymarket 的撮合是\textbf{链下订单簿}（挂单为链下签名消息，免 gas、
+可撤销、不可回溯），\textbf{清算在链上}（Polygon，出块约 2 秒）。因此：
+成交（\code{OrderFilled} 事件）与结算（\code{ConditionResolution}
+事件）可完整、不可篡改地重建；历史盘口与挂单深度\textbf{任何人都无法
+获取}，点差只能用同分钟买卖两向成交的中位价差代理。这是本数据的
+结构性边界。
+
+\subsection{两段数据与拼接}
+
+\begin{itemize}
+\item \textbf{公开数据集段}（HuggingFace \code{Polymarket-v1}）：
+  2022-11-21 至 2026-04-28。终点不是停更：旧交易所合约在 2026-04-28
+  11:00:40 UTC（区块 86{,}126{,}998）产生最后一笔成交后被 v2 合约取代。
+\item \textbf{自建爬虫段}：从区块 86{,}127{,}000 起，按 topic 扫描新旧
+  两版 \code{OrderFilled} 事件重建同构数据，两段按区块号天然不重叠。
+\item \textbf{同质性检验}：v2 合约在 4 月 3 日已上线、与旧合约并行
+  25 天。抽样六个 3{,}000 区块窗口实测，并行期 v2 流量占比
+  $<0.04\%$，拼接处无流量断层。
+\end{itemize}
+
+\subsection{行级定义}
+
+每笔成交的主键与字段（幂等：重复爬取天然去重）：
+\[
+\code{id} \eqdef \code{链ID\_区块号\_日志序号}
+\quad(\text{Polygon 链 ID}=137).
+\]
+
+\begin{table}[h!]\centering\small
+\caption{逐笔成交字段（清洗层）}
+\begin{tabular}{lp{10.5cm}}
+\toprule
+字段 & 定义 \\
+\midrule
+\code{maker / taker} & 挂单方 / 吃单方钱包地址 \\
+\code{taker\_direction} & 由「谁付出哪种资产」判定（资产 0 = USDC；
+  taker 付 USDC 即 taker 买入），来自资产转移事实、非推断 \\
+\code{price} & 成交价 $\in(0,1)$，USDC/份，= 该结果代币的隐含概率 \\
+\code{token\_amount / usdc\_amount} & 份数与名义额，
+  $\code{usdc}=\code{price}\times\code{token}$ \\
+\code{token\_asset\_id} & ERC-1155 positionId（关联市场元数据的外键；
+  同市场 Yes/No 是两个不同 id） \\
+\code{block\_timestamp} & 秒级 Unix 时间（UTC；链上区块时间非均匀，
+  一切时间归并须重采样而非假设逐秒有行） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{机械成交剔除（两类，严格判据）}\label{sec:mech}
+
+链上原始记录含两类不代表方向性观点的行，直接累加会系统性歪曲成交量：
+
+\paragraph{（一）中继腿（relay leg）。}撮合合约（CTF Exchange）是中央
+对手方：一笔用户订单在 \code{OrderFilled} 中拆成「吃单方对撮合合约」的
+一条\textbf{总量记录}（中继腿）与「撮合合约对各挂单方」的多条成分腿。
+判据：$\code{taker} = $ 撮合合约地址 $\Rightarrow$ 中继腿，剔除。
+保留会使成交量\textbf{恰好翻倍}。真实例证（市场「特朗普 6 月 30 日前
+宣布美伊停火结束」，2026-06-27 10:29:14 UTC）：三条成分腿
+$2{,}196.87 + 26.51 + 4{,}966.93 = 7{,}190.31$ 份，与中继腿总量
+7{,}190.31 恰等——同一笔卖单从 0.974 吃到 0.973 两档。
+
+\paragraph{（二）铸造与合并（mint / merge）。}结果代币基于条件代币框架
+（CTF）：两侧互补买单（买 Yes 与买 No）由撮合合约把 1 USDC 拆分成一对
+代币分别交割（mint，合约方法 \code{splitPosition}）；互补卖单把一对
+代币合并回 USDC（merge，\code{mergePositions}）。这类记录是撮合的结构
+性操作，\textbf{不存在从既有持仓者手中承接观点的交易方}，计入方向性
+成交流会污染信号，剔除。
+
+\subsection{结算事件}
+
+结算时刻取链上 \code{ConditionResolution} 首次事件（UMA 乐观预言机
+裁决上链的时点），覆盖 492 个登记市场中的 455 个；公开数据集自带的
+\code{resolved\_at} 元数据稀疏（56/425），不能作为结算依据。极少数
+争议市场多次重报，一律取首次事件。结算后市场价格恒为 0 或 1，结算
+时刻之后的窗口一律记缺失。
+
+%=====================================================================
+\section{数据处理}\label{sec:process}
+
+\subsection{事件视角统一：$p_{\mathrm{event}}$ 与方向 $D$}
+
+链上行只记录「某种代币值多少钱」；研究需要「事件发生的概率」。二元
+市场 Yes+No 价恒等于 1（由 mint/merge 套利钉住），换算唯一：
+\[
+p_{\mathrm{event}} =
+\begin{cases}
+\code{price}, & \code{outcome\_seq}=1 \ (\text{Yes 侧}),\\
+1-\code{price}, & \code{outcome\_seq}=2 \ (\text{No 侧}).
+\end{cases}
+\]
+主动方向 $D\in\{+1,-1\}$ 定义为「taker 这笔成交把 $p_{\mathrm{event}}$
+往哪推」：taker 买 Yes 或卖 No $\Rightarrow D=+1$；taker 卖 Yes 或买
+No $\Rightarrow D=-1$。两层都来自资产转移事实，非 Lee--Ready 式推断。
+
+\subsection{主题注册与时点化准入}
+
+以\textbf{事前注册}的关键词规则圈定与中国资产相关的市场：中东冲突、
+油价阈值、金属价格、美联储政策、俄乌冲突、中美贸易、台海风险、美政府
+停摆，共 8 主题 492 市场；注册后不增删。每个市场注册两个方向系数：
+$\mathrm{orientation}\in\{\pm1\}$（市场结果轴 $\to$ 主题轴，如「停火
+结束」对中东升级轴为 $+1$）与 $\sigma\in\{\pm1\}$（主题轴 $\to$ 品种
+方向先验）；已验证 $\sigma\times\mathrm{orientation}$ 在每个（主题,
+品种）对内为常数。\textbf{时点化准入}：市场只有在累计成交额首次达到
+10 万美元之后才进入面板——用全窗口流动性筛选会让 1 月的样本构成依赖
+4 月才实现的成交，属于用未来信息选样。
+
+\subsection{分钟聚合：从逐笔到主题信念创新 $N1$}\label{sec:n1}
+
+处理链（每一步都有明确目的）：
+\begin{enumerate}
+\item \textbf{截断与变换}：$p$ 截断到 $[0.02, 0.98]$ 后取
+  $\ell(p)=\ln\frac{p}{1-p}$（logit；防临近结算的端点发散，消融显示
+  对截断位置不敏感）。
+\item \textbf{买卖跳动去除}：分钟桶内按 taker 方向分堆取加权中位数再
+  平均（逐笔价在买一与卖一间跳动不代表概率变化）。
+\item \textbf{过时报价}：端点价取最后成交（LOCF），距最后成交超过
+  120 分钟记缺失（\code{p\_age} 规则）。
+\item \textbf{主题聚合}：市场层创新 $\Delta\ell_m$ 按
+  $w_m=\mathrm{orientation}_m\sqrt{\mathrm{cumUSDC}_m}$
+  加权（累计成交额为\textbf{时点化累计}，仅用 $\le t$ 的成交）：
+  \[
+  N1_t \eqdef \frac{\sum_m w_m\,[\ell(p_{m,t})-\ell(p_{m,t^-})]}
+  {\sum_m |w_m|}.
+  \]
+\item \textbf{桶标签取右端}：分钟桶只含严格早于该分钟收盘的成交，
+  与期货 K 线收盘戳对齐后，信号严格先于被解释的价格。
+\end{enumerate}
+
+\subsection{期货侧：三个必须处理的事实}\label{sec:fut}
+
+88 品种主力连续 1 分钟数据（3{,}496{,}950 根）有三个源数据陷阱：
+\begin{enumerate}
+\item \textbf{夜盘归属}：夜盘 K 线存放在\emph{次一自然日}的文件中
+  （周一文件从不含夜盘）。按时间戳重新归属「夜盘归下一交易日」，
+  测试断言周一交易日含上周五 21:01 至周六 02:30。
+\item \textbf{换月拼接}：主力切换发生在交易日边界 21:01，换月日的
+  跨合约收益是拼接伪影。全部检验剔除换月日（roll 标记）。
+\item \textbf{涨跌停}：主力连续无涨跌停价表，以「收尾 15 分钟
+  high=low 锁死占比」作代理监控。已知极端例：2026-03-09 SC 日盘
+  全程一字涨停（225 根全锁，$r_{\mathrm{day}}=0$），吸收检验不受
+  影响、策略可成交性受限。
+\end{enumerate}
+
+\subsection{窗口切分与时差}
+
+北京与美东相差 12--13 小时（2026-03-08 夏令时切换由时区库自动处理），
+国内凌晨闭市段恰对应美东主活跃时段，这是识别设计的基础。以 SC 为例
+（日盘 09:00--15:00，夜盘 21:00--次日 02:30）：
+
+\begin{table}[h!]\centering\small
+\caption{交易日四段窗口（SC；其余品种按各自夜盘收盘时刻定义）}
+\begin{tabular}{llll}
+\toprule
+窗口 & 北京时间 & 对应美东 & 窗口收益定义 \\
+\midrule
+傍晚闭市 gap\_pm & 前日 15:00$\to$21:00 & 凌晨$\to$上午 & $\ln(\text{夜盘开}/\text{前日收})$ \\
+夜盘 night & 21:00$\to$02:30 & 上午$\to$下午 & $\ln(\text{夜盘收}/\text{夜盘开})$ \\
+凌晨闭市 gap\_am & 02:30$\to$09:00 & 下午$\to$晚间 & $\ln(\text{日盘开}/\text{夜盘收})$ \\
+日盘 day & 09:00$\to$15:00 & 美国深夜 & $\ln(\text{日盘收}/\text{日盘开})$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent 开盘前信号 $s_{\mathrm{pre}}$ = 前日 15:00 至当日 09:00 的
+主题信念累积（跨品种一致，已核实同主题逐日相同）。
+
+\subsection{防前视协议（清单）}\label{sec:pit}
+
+\begin{enumerate}
+\item 分钟桶标签取右端，信号桶严格早于期货 K 线收盘戳；
+\item 市场准入时点化（§3.2），聚合权重时点化累计；
+\item 全部滚动 / 展开统计量只用 $\le t$ 的观测（z 分数、MAD 阈值、
+  展开分位数一律 \code{shift(1)} 或严格 $<t$ 估计）;
+\item 测量模型参数（Kalman 等）在样本前段（2026-05-15 前）估计后
+  冻结，其后因果应用；
+\item 结算后价格、超时报价、换月日一律记缺失而非填充；
+\item 全部定义与阈值已冻结并哈希登记（\code{freeze/manifest.json}），
+  2026-07-18 之后为未触碰样本。
+\end{enumerate}
+
+%=====================================================================
+\section{信号定义与规定格式登记}\label{sec:signal}
+
+\subsection{信号库与 IC 口径}
+
+分钟级信号库共 47 个：N 族（数值：信念创新与主动流）、C 族（量价
+组合）、K 族（离散事件复杂统计）、X 族（条件组合，签名型）各 10 个，
+J 族（跳变因子）7 个；每个信号的显式公式、机制、窗口与归一化登记见
+完整版附录三 §3 与 §5b，统计量全表见
+\code{signal\_stats(\_ext).parquet}（47 信号 $\times$ 5 品种）。
+
+\textbf{IC 口径}（规定登记表使用）：
+\[
+\mathrm{RankIC}_h \eqdef \rho_S\big(s_t,\; r_{t\to t+h}\big)
+\quad(\text{pooled，全部分钟行}),
+\qquad
+\mathrm{ICIR}_h \eqdef \frac{\overline{\mathrm{IC}^{(d)}_h}}
+{\mathrm{sd}\big(\mathrm{IC}^{(d)}_h\big)},
+\]
+其中 $\mathrm{IC}^{(d)}_h$ 为第 $d$ 个交易日的日内 RankIC。离散信号
+另给\textbf{符号 RankIC}：signed 指示变量（$+1/0/-1$）与前向收益的
+pooled 秩相关（与 X 族同口径）。pooled 口径按分钟行计数、推断意义
+有限（完整版 §12.14--12.15 的降格结论适用），本表为描述性登记。
+
+\subsection{登记信号的严格定义}
+
+\paragraph{C8（未兑现缺口，连续）。}
+\[
+C8_t \eqdef z_{4800}\Big(\sum_{u=t-119}^{t} N1_u\Big)
+- z_{4800}\Big(\sum_{u=t-119}^{t} r1_u\Big),
+\]
+$z_{4800}$ 为 4{,}800 交易分钟滚动 z（min 960），$r1$ 为期货 1 分钟
+收益。\textbf{必须声明}：第二腿本身是短期价格反转因子；经双腿分解与
+严格增量检验（五品种全部未通过预设确认门槛），C8 的强度主要由反转腿
+承载，\textbf{Polymarket 腿的分钟级增量已否定}，本表仅作复合信号的
+描述性登记。
+
+\paragraph{E1（价格跳，离散）。}
+\[
+E^{up}_t \eqdef \mathbf{1}\{N1_t > \kappa_t\},\qquad
+\kappa_t = \max\big(3\times1.4826\times\mathrm{MAD}_{30\text{日}}
+(N1\neq0),\; 0.05\big).
+\]
+
+\paragraph{事件跳（离散）。}15 分钟桶 $|\Delta\ell|$ 超过
+$3\times1.4826\times\mathrm{MAD}_{48\text{桶}}$ 且桶内成交
+$\ge\$10{,}000$；同主题同时戳折叠为一个事件，
+$J_{\mathrm{evt}}=\sqrt{\mathrm{usdc}}$ 加权的
+$\mathrm{orientation}\times\Delta\ell$。两个登记单元：SC 盘中日盘跳
+（映射到期货分钟网格延迟 $\le2$ 分钟且落在日盘）；M 孤立跳（同桶无
+其他市场共跳，$n_{\mathrm{cojump}}=0$）。
+
+\subsection{规定格式登记表}
+
+机器可读源：\code{docs/signal\_summary.json}（纯数字模式：全部量化
+字段为 number、不适用为 null、单位在字段名或 meta.units）。重算命令：
+\begin{center}
+\code{python scripts/export\_signal\_summary.py}
+\end{center}
+
+\begin{table}[h!]\centering\footnotesize
+\caption{登记信号主表（IC / ICIR / 取 1 收益 / 符号 IC，均为 1/3/10
+分钟三元组；数据由 \code{make\_concise\_table.py} 从 JSON 生成）}
+\input{t2_main}
+\end{table}
+
+\begin{table}[h!]\centering\footnotesize
+\caption{取值统计量（连续：矩统计；离散：valuecount）与非零频率}
+\input{t2_stats}
+\end{table}
+
+\begin{table}[h!]\centering\footnotesize
+\caption{品种全区间基准（离散信号条件均值的对照；剔换月日）}
+\input{t2_base}
+\end{table}
+
+\noindent 读法示例：SC 盘中事件跳后 10 分钟条件均值 $+10.63$ bp，应
+对照 SC 无条件 10 分钟均值 $-0.13$ bp 解读；该格为置换单方法支持的
+探索候选、毛收益低于两倍成本门槛（16 bp 完整换手）。
+
+%=====================================================================
+\section{关键结果（模块化摘要）}\label{sec:results}
+
+以下每个模块：一句结论 + 关键数字 + 完整版出处。展开论证、稳健性与
+全部反例见完整版对应章节。
+
+\subsection{吸收结构（A 级，全文最强结论）}
+
+国内闭市期间积累的事件概率变化在开盘跳空与夜盘被系统性定价。
+油价主题 $\times$ SC 傍晚细窗相关 $0.86$（$n=37$）、合并缺口
+$0.743$（$n=74$）；中东 $\times$ 凌晨闭市段 $0.70$；循环置换
+$p<0.0005$；冲突高峰期内 / 外同号且期外更强（$0.35$ / $0.68$）。
+\textbf{截面识别}：88 品种按暴露度逐日排序（差分掉当日共同因子），
+截面 RankIC $0.185$（经济先验载荷，HAC $t=4.0$）与 $0.261$（估计
+载荷，$t=5.0$），最高与最低五分位开盘前收益差约 $100$ bp/日，承载
+品种恰为能源链与贵金属。（完整版 §6、§12.12）
+
+\subsection{中东增量（A 级）}
+
+控制同窗国际基准（USO 等 12 资产）后，唯一稳定显著的配对：中东冲突
+概率对 SC，严格同窗 $t=4.94$（$n=114$）；经济量级约 $96$ bp/$\sigma$
+（未控制 196，独立增量约一半）；机制指向 INE 交割篮子的中东油种
+集中。LP-IV（第一阶段 $F=42$）：事件驱动的油价变动传导系数
+$\delta=1.13$ 高于一般变动的 $0.89$。（§11、§12.8、§12.14）
+
+\subsection{反转 = SC$-$USO 相对收益回归（A 级）}
+
+事件日吸收（$+507$ bp/$\sigma$）的 84\% 来自 USO 分量；次日反转
+（$-226$ bp）的 81\% 来自 SC 相对 USO 的收益分量，冲突高峰时累计
+相对偏离一度达 18\% 后回归。该分量未经汇率 / 期限 / 油种调整，
+不等同于严格基差。（§11.3、§12.14）
+
+\subsection{否定结果（C/D 级，占结论的大多数）}
+
+\begin{table}[h!]\centering\small
+\caption{否定结果汇总（每行都是登记在案的完整检验）}
+\begin{tabular}{p{5.2cm}p{8.2cm}}
+\toprule
+命题 & 证据 \\
+\midrule
+日频方向不可预测 & 68 项预测检验 FDR 后全负；OOS 增量不为正；
+  截面预测 IC $\approx 0$（三层互证） \\
+波动水平预测无 OOS 增量 & $\Delta R^2\approx0$，Clark--West
+  $t\approx0$ \\
+组合不放大信息 & 中东$\times$油价交互 $t=-2.88$（冗余）；共现无
+  超额；确认型组合跨品种一致为负 \\
+C8 的 PM 腿无分钟增量 & 五品种严格增量检验全部未通过（逐日日内
+  partial $t$ 0.6--1.8；安慰剂 $p$ 0.26--0.61；OOS
+  $\Delta R^2\approx0$），退出 alpha 候选 \\
+J 族仅单方法探索 & SC 盘中跳：置换 $p<0.008$ 支持、HAC 一致 wild
+  bootstrap $p=0.17$ 不支持；毛收益低于 2$\times$ 成本门槛；M 孤立跳
+  51 响应不显著（$t$ 1.41 / 0.87） \\
+聪明钱窗口流无增量 & 技能钱包仅占主题成交额 2--5\%；锚配对预测全零；
+  吸收增量 $t\approx1.0$--$1.3$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{数据层新发现：钱包技能真实且持续}
+
+对全部逐笔按 taker 钱包核算持有到结算盈亏（5{,}831 万钱包$\times$市场
+组合）：前后半段单位成交盈亏秩相关随活跃度单调升——散户层 0.026、
+$\ge$100 市场 0.113、$\ge$100 万美元 0.158（$n=35.8$ 万钱包）。技能
+存在，但其信息在窗口尺度已被价格聚合。（§12.13）
+
+\subsection{结论与投资定位}
+
+Polymarket 对中国商品期货的价值形态是\textbf{事件风险的实时测量}
+（开盘前风险敞口、品种排序、尾部旗标——旗标冻结样本初值 lift 3.28、
+Fisher $p=0.007$、overlay 使 SC 持有回撤 $-53\%\to-31\%$，2027 年初
+未触碰样本裁决），\textbf{不是方向 alpha}。实盘配置为零仓位；全部
+候选已冻结（\code{freeze/manifest.json}），裁决时点：SC 跳格
+2026-12-31 或新增 95 个交易日先到者，R1--R4 与旗标 2027-01-31，
+各候选仅一次预约定检验。（§12.15--12.16）
+
+%=====================================================================
+\section{复现}\label{sec:intl}
+
+\begin{table}[h!]\centering\small
+\caption{复现命令链（全部数字构建时从产物计算，不手抄）}
+\begin{tabular}{p{6.3cm}p{7.2cm}}
+\toprule
+步骤 & 命令 / 产物 \\
+\midrule
+链上采集与统一 tape & \code{crawl\_polymarket\_chain.py $\to$
+  v3\_build\_tape.py} \\
+期货分钟库 & \code{build\_cn\_futures\_db.py}（88 品种） \\
+主题注册 & \code{select\_polymarket\_markets.py $\to$
+  cn\_registry\_v3.parquet} \\
+分钟面板与信号库 & \code{v3\_defense\_build.py}（40 信号 + 前向收益） \\
+跳变因子 & \code{v3\_jump\_factors.py / v3\_jump\_inference.py} \\
+截面与钱包 & \code{v3\_cross\_section.py / v3\_wallet\_skill.py} \\
+规定格式登记表 & \code{export\_signal\_summary.py $\to$
+  docs/signal\_summary.json} \\
+本文表格 & \code{make\_concise\_table.py $\to$ docs/concise/} \\
+本文编译 & \code{xelatex main.tex}（两遍） \\
+影子记录 & \code{shadow\_daily.py $\to$ shadow/records.jsonl}
+  （追加不回改） \\
+冻结对账 & \code{freeze/manifest.json}（SHA256 + 终检日期） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent 补充数据腿（零成本，\code{data/intl/}）：Brent 与 USDCNH
+日频经免费接口；交易所逐合约日结算经公开端点
+（\code{.../dailydata/kxYYYYMMDD.dat}，INE/SHFE 已核实可用）。
+
+\vspace{1em}
+\noindent\rule{\textwidth}{0.4pt}\\
+\small 完整版：\code{docs/cn\_futures\_polymarket\_report.html}
+（151 页 PDF 同名）。本文对应分支 \code{feat/cn-futures-polymarket}；
+样本短且由单一事件主导，全部结论为探索性。
+
+\end{document}
