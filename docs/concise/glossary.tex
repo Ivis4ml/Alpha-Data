@@ -296,3 +296,99 @@
   （SHA256 哈希）存档，并预约将来某个日期用"没碰过的新数据"检验一次，
   杜绝反复试到显著为止。
 \end{description}
+
+\subsection{十、公式符号速查表}
+下表把全文公式里出现的记号一次列清。凡在正文遇到不认识的符号，回此处查。
+
+\smallskip\noindent\textbf{（甲）时间与下标}
+\nopagebreak
+\begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{ll}
+\toprule
+符号 & 含义 \\
+\midrule
+$t$ & 当前这一分钟（时刻） \\
+$h$ & 前向视界，往后第几分钟；取 $1,2,3,5,10,15$ \\
+$u$ & 求和用的分钟下标，在某个窗口内遍历 \\
+$m$ & 市场下标（一个主题下第 $m$ 个市场） \\
+$d$ & 交易日下标 \\
+$\theta$ & 主题下标（8 个主题之一） \\
+$W$ & 滚动窗口长度（交易分钟数，本文归一化用 $W=4800$） \\
+$t^-$ & 读作"t 减"，指该市场上一次有成交的那一分钟 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\smallskip\noindent\textbf{（乙）期货价量}
+\nopagebreak
+\begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{ll}
+\toprule
+符号 & 含义 \\
+\midrule
+$C_t$ & 这一分钟的收盘价（$C=$ close）；$O/H/L$ 为开 / 高 / 低价 \\
+$H_t, L_t$ & 这一分钟的最高价、最低价（涨跌停代理 $\code{locked}=\mathbf{1}\{H=L\}$ 用） \\
+$V_u, A_u$ & 这一分钟的成交量（volume）、成交额（money / amount） \\
+$r1_t$ & 期货 1 分钟对数收益 $=\ln C_t-\ln C_{t-1}$ \\
+$\mathrm{fwd}_{h,t}$ & 前向收益：信号发出后 $h$ 分钟的对数收益（段内，跨休市置缺失） \\
+$\mathrm{seg}_t$ & 连续分钟段编号；相邻 K 线时间差 $\ne1$ 分钟即换段 \\
+$\Delta ts_u$ & 相邻两根 K 线的时间差 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\smallskip\noindent\textbf{（丙）Polymarket 侧}
+\nopagebreak
+\begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{ll}
+\toprule
+符号 & 含义 \\
+\midrule
+$p_{m,t}$ & 市场 $m$ 这一分钟的事件概率 \\
+$\ell(p)$ & logit 变换 $=\ln\dfrac{p}{1-p}$；$\Delta\ell$ 为其变化量 \\
+$D$ & 单笔主动方向 $\in\{-1,+1\}$，押事件不发生 / 发生（详见第 \ref{sec:dir} 节） \\
+$\mathrm{orientation}_m$ & 市场方向系数 $\pm1$，把各市场 Yes 含义统一到主题轴 \\
+$\sigma$ & 品种方向先验 $\pm1$，主题轴到期货涨跌的先验（勿与标准差混淆） \\
+$w_m$ & 市场权重 $=\mathrm{orientation}_m\sqrt{\text{时点化累计成交额}_m}$ \\
+$N1_t$ & 主题信念创新：这一分钟主题看法的加权平均变化（全文核心量） \\
+$f_t,\,U_t,\,n_t,\,M_t$ & 15 分钟签名流、成交额、笔数、活跃市场数 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\smallskip\noindent\textbf{（丁）归一化与信号}
+\nopagebreak
+\begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{ll}
+\toprule
+符号 & 含义 \\
+\midrule
+$z_W(x)$ & 时序 z 分数 $=(x-\mu_W)/\sigma_W$，$\mu_W,\sigma_W$ 为窗口 $W$ 的滚动均值 / 标准差 \\
+$m_t,v_t,u_t,a_t$ & 前 15 分钟涨幅 / 波动 / 成交量 / 成交额的 $z_{4800}$ 归一化值 \\
+$\kappa_t$ & 稳健事件阈值 $=\max(3\times1.4826\times\mathrm{MAD}_{4800}(N1),\,0.05)$ \\
+$\mathrm{MAD}$ & 中位数绝对偏差（抗极端值的波动度量）；$1.4826$ 把它折成正态标准差 \\
+$e_t$ & 签名事件指示 $=\mathbf{1}\{N1_t>\kappa_t\}-\mathbf{1}\{N1_t<-\kappa_t\}\in\{-1,0,1\}$ \\
+$C8_t$ & 未兑现缺口信号（PM 累积腿减期货反转腿，见第 \ref{sec:signal} 节） \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\smallskip\noindent\textbf{（戊）统计与通用记号}
+\nopagebreak
+\begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{ll}
+\toprule
+符号 & 含义 \\
+\midrule
+$\mathbf{1}\{\cdot\}$ & 指示函数：括号内条件成立取 1、否则取 0 \\
+$\mathrm{sign}(\cdot)$ & 取符号：正数 $+1$、负数 $-1$、零 $0$ \\
+$\ln,\ \sqrt{\ },\ \sum,\ |\cdot|$ & 自然对数、平方根、求和、绝对值 \\
+$\rho_S$ & Spearman 秩相关系数（RankIC 用的相关） \\
+$\mathrm{RankIC}_h$ & 信号与 $h$ 分钟前向收益的 pooled 秩相关 \\
+$\mathrm{IC}^{(d)}_h$ & 第 $d$ 个交易日的日内 RankIC \\
+$\mathrm{ICIR}_h$ & $=\overline{\mathrm{IC}^{(d)}_h}/\mathrm{sd}(\mathrm{IC}^{(d)}_h)$，逐日 IC 的均值除标准差 \\
+$t_h$ & $t$ 统计量 $=\mathrm{ICIR}_h\sqrt{D}$，此处 $D$ 为\emph{有效交易日数}（与方向 $D$ 同字不同义） \\
+$\mathrm{bp}$ & 基点，万分之一；$10\,\mathrm{bp}=0.1\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
