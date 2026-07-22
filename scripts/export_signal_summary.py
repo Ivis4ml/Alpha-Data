@@ -63,6 +63,11 @@ META = {
         "离散信号符号RankIC（发出后N分钟）": "signed 指示变量（+1/0/-1）"
                                              "与前向收益的 pooled RankIC"
                                              "（与 X 族同口径），仅离散",
+        "离散信号（取1）后N分钟超额收益_bp": "bp，= 取1条件均值 - 品种"
+                                             "无条件基准；事件研究 t 检验"
+                                             "的即为此量，后续衡量一律以"
+                                             "超额为准（毛值字段仅为保持"
+                                             "规定格式原样）",
     },
     "na_convention": "不适用的字段一律为 null",
 }
@@ -380,6 +385,18 @@ def main() -> int:
                    rows[7]["取值valuecount"]["-1"]),
     }
     make_histogram(hist_data, discrete_counts)
+
+    # 超额收益字段（离散行）：条件均值 - 品种无条件基准。规定的毛值字段
+    # 名与语义保持原样不动，另加 _bp 后缀的超额字段供下游直接按超额衡量
+    # （与正文表 13 及事件研究 t 检验的量一致）。
+    for r in rows:
+        for h in (1, 3, 10):
+            raw = r[f"离散信号（取1）后{h}分钟平均收益"]
+            base = r[f"品种无条件{h}分钟均值收益_bp"]
+            r[f"离散信号（取1）后{h}分钟超额收益_bp"] = (
+                None if raw is None or base is None
+                else rnd(raw - base, 3))
+
     OUT.write_text(json.dumps({"meta": META, "records": rows},
                               ensure_ascii=False, indent=2))
     print(f"written {OUT}（{len(rows)} 条，纯数字模式）")
