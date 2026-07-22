@@ -27,6 +27,8 @@ DEF = ROOT / "data" / "cn_futures" / "analysis" / "v3" / "defense"
 JD = ROOT / "data" / "cn_futures" / "analysis" / "v3" / "jump"
 DAILY = ROOT / "data" / "cn_futures" / "daily"
 OUT = ROOT / "docs" / "signal_summary.json"
+#: 全信号统计网格（IC / ICIR 的唯一来源，与正文表 5、图 2 同源）。
+GRID = DEF / "signal_grid.parquet"
 HIST = "docs/figures/f_signal_summary_hist.png"
 N_MONTHS = 125 / 21
 
@@ -89,8 +91,18 @@ def baseline_of(prod: str) -> dict:
 
 def cont_row(prod: str, ic: pd.DataFrame, panel: pd.DataFrame,
              hist_panel: str) -> dict:
+    """连续信号（C8）的登记记录。
+
+    IC / ICIR 一律取自 ``signal_grid.parquet``，与正文 §指标口径的定义、
+    表 5（IC 期限结构）与图 2 同源。历史上本函数读 ``ic_table.parquet``，
+    该表的 ICIR 走另一条口径（日内最少观测数与相关类型均不同），会使同一个
+    C8 的同一指标在同一份报告里印出两个值（AG 曾为 0.39 对 0.89）。
+    """
     sub = ic[(ic["product"] == prod) & (ic["signal"] == "C8")
              & (ic["scope"] == "all")].set_index("horizon")
+    del sub  # ic_table 仅保留入参兼容，数字一律以 signal_grid 为准
+    grid = pd.read_parquet(GRID)
+    gr = grid[(grid["product"] == prod) & (grid["signal"] == "C8")].iloc[0]
     v = panel["C8"].replace(0.0, np.nan).dropna()
     return {
         "交易品种": prod,
@@ -100,13 +112,13 @@ def cont_row(prod: str, ic: pd.DataFrame, panel: pd.DataFrame,
         "公式": C8_FORMULA,
         "信号频率": "逐分钟连续值（120 分钟滚动窗，跨段按交易分钟序）",
         "信号月次数": rnd(len(v) / N_MONTHS, 1),
-        "连续信号IC（发出后1分钟）": rnd(sub.loc[1, "rank_ic"]),
-        "连续信号IC（发出后3分钟）": rnd(sub.loc[3, "rank_ic"]),
-        "连续信号IC（发出后10分钟）": rnd(sub.loc[10, "rank_ic"]),
-        "连续信号ICIR（发出后1分钟）": rnd(sub.loc[1, "icir"], 3),
-        "连续信号ICIR（发出后3分钟）": rnd(sub.loc[3, "icir"], 3),
-        "连续信号ICIR（发出后10分钟）": rnd(sub.loc[10, "icir"], 3),
-        "IC统计天数": int(sub.loc[1, "n_days"]),
+        "连续信号IC（发出后1分钟）": rnd(gr["ic_s_1"]),
+        "连续信号IC（发出后3分钟）": rnd(gr["ic_s_3"]),
+        "连续信号IC（发出后10分钟）": rnd(gr["ic_s_10"]),
+        "连续信号ICIR（发出后1分钟）": rnd(gr["icir_1"], 3),
+        "连续信号ICIR（发出后3分钟）": rnd(gr["icir_3"], 3),
+        "连续信号ICIR（发出后10分钟）": rnd(gr["icir_10"], 3),
+        "IC统计天数": int(gr["ic_days_1"]),
         "离散信号（取1）后1分钟平均收益": None,
         "离散信号（取1）后3分钟平均收益": None,
         "离散信号（取1）后10分钟平均收益": None,
@@ -296,12 +308,12 @@ def make_ic_decay(ic: pd.DataFrame,
     pub_style.setup(cn_font=True)
     hs = [1, 2, 3, 5, 10, 15]
     fig, axes = plt.subplots(1, 3, figsize=(11, 3.4))
+    grid = pd.read_parquet(GRID)          # 与表 2、表 5 同源，防止图表分叉
     for prod in ("SC", "AU", "AG", "CU", "M"):
-        sub = ic[(ic["product"] == prod) & (ic["signal"] == "C8")
-                 & (ic["scope"] == "all")].set_index("horizon")
-        axes[0].plot(hs, [sub.loc[h, "rank_ic"] for h in hs],
+        gr = grid[(grid["product"] == prod) & (grid["signal"] == "C8")].iloc[0]
+        axes[0].plot(hs, [float(gr[f"ic_s_{h}"]) for h in hs],
                      marker="o", ms=3, label=prod)
-        axes[1].plot(hs, [sub.loc[h, "icir"] for h in hs],
+        axes[1].plot(hs, [float(gr[f"icir_{h}"]) for h in hs],
                      marker="o", ms=3, label=prod)
     axes[0].set_title("(a) C8 pooled RankIC 衰减", fontsize=9)
     axes[1].set_title("(b) C8 日度 ICIR 衰减", fontsize=9)

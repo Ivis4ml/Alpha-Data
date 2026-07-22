@@ -705,6 +705,60 @@ $\{-1,0,+1\}$ 上算秩相关确实会产生假阳性，\textbf{报告采用事�
 没有一点来自 Polymarket 侧。}表 \ref{tab:event} 中离散信号的 $P_{10'}$
 与基准比例也几乎处处相当，与此一致。
 
+\subsection{检出力与最小可检测效应}\label{sec:mde}
+
+\textbf{必须回答的一问：这是真的没有，还是 125 天太短看不出来？}
+只报"未通过门槛"是不够的：Bonferroni 是往\emph{保守}方向的修正，用一个
+更难拒绝零假设的门槛去支撑"没有信号"，形式上恰好是反的。因此本节给出
+\textbf{最小可检测效应}（MDE）：在既有样本与既定门槛下，多大的效应会被
+我们以 80\% 的把握检出。凡大于 MDE 的效应，本样本\textbf{已经排除}；
+凡小于 MDE 的，本样本\textbf{无法分辨}，只能留待未触碰样本裁决。
+
+标准误由已有量精确反解，不引入任何新假设：连续侧
+$\mathrm{SE}=\mathrm{sd}(\mathrm{IC}^{(d)})/\sqrt{D}$（即
+$t=\mathrm{ICIR}\sqrt{D}$ 的反解）；离散侧
+$\mathrm{SE}=|\text{条件超额}|/|t|$（日聚类 $t$ 的反解，限 $n_{+}\ge100$）。
+则
+\[
+\mathrm{MDE} = (z_\alpha + z_\beta)\times \mathrm{SE},
+\qquad z_\alpha = 4.15\ (\text{全族门槛}),\quad
+z_\beta = 0.84\ (\text{检出力 }80\%).
+\]
+
+\begin{table}[h!]\centering\small
+\caption{最小可检测效应（各格取中位数；离散侧另给 p90 以示分布。
+数据由 \code{make\_concise\_table.py} 从 \code{signal\_grid.parquet} 计算）}
+\label{tab:mde}
+\input{t9_mde}
+\end{table}
+
+\noindent 三点读法：
+
+\begin{enumerate}
+\item \textbf{连续侧}：可检出的 RankIC 下限从 $h=1$ 的 $0.019$ 升到
+  $h=15$ 的 $0.070$。与实测对照——\textbf{六个视界无一例外，纯
+  Polymarket 信号实测的最大 $|\mathrm{RankIC}|$ 都低于该视界的 MDE，
+  且大致只有其一半}（$h=1$：$0.0102$ 对 $0.0192$；$h=5$：$0.0207$ 对
+  $0.0414$；$h=15$：$0.0392$ 对 $0.0700$）。即这些信号的效应量本就落在
+  本样本可分辨的下限\emph{以下}，"没检出"与"效应确实小于可分辨下限"
+  两种解释在此是一致的。
+\item \textbf{离散侧与成本门槛的对照}：$h=10$ 时中位格的 MDE 为
+  \textbf{6.9 bp}，\textbf{低于}完整换手成本门槛 16 bp。也就是说，
+  \textbf{任何在中位格上具备经济可交易性的效应（超过成本），都会被本
+  样本检出}——既然没有检出，就可以排除。但必须同时诚实报告：p90 格的
+  MDE 为 \textbf{18.8 bp}，\textbf{高于}成本门槛，故正确表述是
+  \textbf{"中位格可排除"，而非"全部格可排除"}；检出力最弱的那部分格
+  仍存在未被排除的空间。
+\item \textbf{有效天数不是 125}：逐日 IC 的有效交易日中位为
+  \textbf{109 天}（日内取值恒定或有效行不足 30 的交易日被剔除），
+  正文一律不按 125 天计算检出力。
+\end{enumerate}
+
+\noindent\textbf{据此，本文的否定结论应读作}：在中位检出力的格上，
+\emph{成本门槛之上的整个效应区间已被排除}；低于 MDE 的效应本样本不可
+分辨，不主张其为零，留待 2026-12 / 2027-01 的未触碰样本一次性裁决
+（§\ref{sec:results}）。
+
 \subsection{规定格式登记表}
 
 机器可读源：\code{docs/signal\_summary.json}（纯数字模式：全部量化
@@ -770,8 +824,8 @@ $p<0.0005$；冲突高峰期内 / 外同号且期外更强（$0.35$ / $0.68$）�
 \toprule
 命题 & 证据 \\
 \midrule
-分钟级无纯 PM 信号 & 23 个纯 Polymarket 信号 $\times$ 684 检验，
-  $\max|t|=3.24 <$ 门槛 4.02（本文 \S\ref{sec:mt}，新算） \\
+分钟级无纯 PM 信号 & 23 个纯 Polymarket 信号 $\times$ 798 检验，
+  $\max|t|=3.24 <$ 门槛 4.15（本文 \S\ref{sec:mt}，新算） \\
 日频方向不可预测 & 68 项预测检验 FDR 后全负；OOS 增量不为正；
   截面预测 IC $\approx 0$（三层互证） \\
 波动水平预测无 OOS 增量 & $\Delta R^2\approx0$，Clark--West

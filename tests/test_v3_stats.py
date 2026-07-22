@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -22,7 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from v3_jump_inference import (  # noqa: E402
-    date_block_perm_p, filter_isolated, hac_t_of, wild_cluster_p)
+    date_block_perm_p,
+    filter_isolated,
+    hac_t_of,
+    wild_cluster_p,
+)
 
 
 def test_isolated_is_zero_cojump() -> None:
@@ -110,3 +115,56 @@ def test_ledger_total_matches_detail() -> None:
         m = re.search(r"合计约 <b>(\d+)</b> 个检验单元", html)
         assert m is not None, "总账句未找到"
         assert int(m.group(1)) == total, "总账与明细求和不一致"
+
+
+# --------------------------------------------------------- 精炼版数字一致性
+CONCISE = ROOT / "docs" / "concise"
+DEFENSE = ROOT / "data" / "cn_futures" / "analysis" / "v3" / "defense"
+
+
+@pytest.mark.skipif(not (CONCISE / "key_numbers.json").exists(),
+                    reason="精炼版表体未生成")
+def test_concise_numbers_match_artifacts() -> None:
+    """精炼版正文引用的检验数 / 门槛 / 通过格数必须等于脚本算出的产物值。
+
+    历史事故：摘要改为 798 检验、门槛 4.15 后，§否定结果汇总表仍留着
+    684 与 4.02，同一份 PDF 内自相矛盾。此测试锁死该纪律。
+    """
+    key = json.loads((CONCISE / "key_numbers.json").read_text())
+    tex = (CONCISE / "main.tex").read_text(encoding="utf-8")
+
+    # 正文出现的这些数字必须与产物一致
+    assert f"{key['pure_pm_tests']} 个检验" in tex, "纯 PM 检验数与产物不符"
+    assert f"{key['threshold']:.2f}" in tex, "Bonferroni 门槛与产物不符"
+    assert f"{key['n_pass_cells']} 个通过门槛" in tex, "通过格数与产物不符"
+
+    # 已被口径修正淘汰的旧数字不得残留
+    for stale in ("684 检验", "684 个检验", "门槛 4.02", "15 个通过门槛"):
+        assert stale not in tex, f"旧口径数字残留：{stale}"
+
+
+@pytest.mark.skipif(
+    not (DEFENSE / "signal_grid.parquet").exists(), reason="网格未生成")
+def test_summary_json_ic_matches_grid() -> None:
+    """signal_summary.json 的连续记录必须与 signal_grid 同源逐位一致。
+
+    历史事故：表 2 的 ICIR 读 ic_table.parquet（另一条口径），与表 5、
+    图 2 所用的 signal_grid 对同一个 C8 印出两个值（AG 0.39 对 0.89）。
+    """
+    grid = pd.read_parquet(DEFENSE / "signal_grid.parquet")
+    obj = json.loads((ROOT / "docs" / "signal_summary.json").read_text())
+    n_checked = 0
+    for rec in obj["records"]:
+        if rec["信号类型"] != "连续":
+            continue          # 离散三行为跳因子，不在网格内
+        gr = grid[(grid["product"] == rec["交易品种"])
+                  & (grid["signal"] == rec["信号"])]
+        assert len(gr) == 1, f"网格中找不到 {rec['交易品种']}·{rec['信号']}"
+        gr = gr.iloc[0]
+        for h in (1, 3, 10):
+            assert rec[f"连续信号IC（发出后{h}分钟）"] == pytest.approx(
+                float(gr[f"ic_s_{h}"]), abs=1e-4), f"IC 分叉 h={h}"
+            assert rec[f"连续信号ICIR（发出后{h}分钟）"] == pytest.approx(
+                float(gr[f"icir_{h}"]), abs=1e-3), f"ICIR 分叉 h={h}"
+        n_checked += 1
+    assert n_checked == 5, f"应校验 5 条连续记录，实际 {n_checked}"

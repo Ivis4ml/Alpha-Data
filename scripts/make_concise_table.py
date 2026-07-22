@@ -175,7 +175,13 @@ def grid_tables() -> float:
             freq = (f"{pm:,.0f} 分钟" if kind != "离散"
                     else f"{pm:,.0f} 次")
             if kind == "离散":
-                stat = (f"$\\{{-1,0,1\\}}$，非零 "
+                # 取值域直接读 valuecount，不得硬编码：K5 是无符号游程长度
+                # {0,1,2,3,4}、五品种下行触发数均为 0，与签名型不同。
+                vals: set[int] = set()
+                for js in sub["valuecount"].dropna():
+                    vals |= {int(k) for k in json.loads(js)}
+                dom = "\\{" + ",".join(str(v) for v in sorted(vals)) + "\\}"
+                stat = (f"${dom}$，非零 "
                         f"{sub['nonzero_share'].mean():.2%}")
             else:
                 stat = (f"$\\mu${sub['mean'].mean():+.2f}, "
@@ -299,6 +305,73 @@ def family_table(thr: float) -> dict[str, object]:
     }
 
 
+# --------------------------------------------------------- 检出力与 MDE
+#: 第二类错误率 20% 对应的单侧分位（检出力 80%）。
+Z_BETA = float(stats.norm.ppf(0.80))
+#: 完整换手成本门槛（bp），与冻结清单同口径。
+COST_BP = 16.0
+
+
+def mde_table(thr: float) -> dict[str, object]:
+    """最小可检测效应（MDE）：在既有样本上能排除多大的效应。
+
+    标准误由已算出的量精确反解，不引入新假设：
+
+    - 连续侧 :math:`\\mathrm{SE} = \\mathrm{sd}(IC^{(d)})/\\sqrt{D}`，
+      即 ``v3_signal_grid`` 中 ``ic_t = (m/sd)*sqrt(nd)`` 的反解；
+    - 离散侧 :math:`\\mathrm{SE} = |\\text{超额}|/|t|`（限 ``n_up>=100``），
+      即日聚类 t 的反解，单位 bp。
+
+    :math:`\\mathrm{MDE} = (z_\\alpha + z_\\beta)\\times \\mathrm{SE}`。
+    """
+    g = pd.read_parquet(DEF / "signal_grid.parquet")
+    cont = g[g["kind"] != "离散"]
+    disc = g[(g["kind"] == "离散") & (g["n_up"] >= 100)]
+
+    rows, key = [], {}
+    for h in HORIZONS:
+        se_c = (cont[f"icd_std_{h}"]
+                / np.sqrt(cont[f"ic_days_{h}"])).to_numpy(dtype=float)
+        se_c = se_c[np.isfinite(se_c)]
+        se_d = (disc[f"up_excess_{h}"].abs()
+                / disc[f"up_t_{h}"].abs()).to_numpy(dtype=float)
+        se_d = se_d[np.isfinite(se_d)]
+        if not len(se_c) or not len(se_d):
+            continue
+        # 连续侧：以 RankIC 为单位
+        mde_c = (thr + Z_BETA) * np.median(se_c)
+        # 离散侧：以 bp 为单位，给中位与 p90 两档
+        mde_d_med = (thr + Z_BETA) * np.median(se_d)
+        mde_d_p90 = (thr + Z_BETA) * np.quantile(se_d, 0.90)
+        rows.append(
+            f"{h} & {np.median(se_c):.5f} & {mde_c:.4f} & "
+            f"{np.median(se_d):.2f} & {mde_d_med:.1f} & {mde_d_p90:.1f} \\\\")
+        key[f"mde_ic_{h}"] = round(float(mde_c), 4)
+        key[f"mde_bp_med_{h}"] = round(float(mde_d_med), 2)
+        key[f"mde_bp_p90_{h}"] = round(float(mde_d_p90), 2)
+
+    (OUT / "t9_mde.tex").write_text(
+        "\\setlength{\\tabcolsep}{5pt}\n"
+        "\\begin{tabular}{rrrrrr}\n\\toprule\n"
+        "& \\multicolumn{2}{c}{连续侧（RankIC 单位）} "
+        "& \\multicolumn{3}{c}{离散侧（bp）} \\\\\n"
+        "\\cmidrule(lr){2-3}\\cmidrule(lr){4-6}\n"
+        "$h$ & SE 中位 & MDE & SE 中位 & MDE 中位 & MDE p90 \\\\\n"
+        "\\midrule\n" + "\n".join(rows) + "\n\\bottomrule\n\\end{tabular}\n")
+
+    days = g[[f"ic_days_{h}" for h in HORIZONS]].to_numpy(dtype=float).ravel()
+    days = days[np.isfinite(days) & (days > 0)]
+    key["ic_days_median"] = int(np.median(days))
+    key["z_beta"] = round(Z_BETA, 4)
+    key["cost_bp"] = COST_BP
+    # 离散侧中位格能否排除成本门槛之上的效应
+    key["mde_bp_med_10_below_cost"] = bool(key.get("mde_bp_med_10", 1e9)
+                                           < COST_BP)
+    key["mde_bp_p90_10_below_cost"] = bool(key.get("mde_bp_p90_10", 1e9)
+                                           < COST_BP)
+    return key
+
+
 # --------------------------------------------------------- 全历史到达率
 def arrival_table() -> None:
     h = pd.read_parquet(DEF / "history_monthly.parquet")
@@ -332,6 +405,7 @@ def main() -> int:
     family_tables()
     thr = grid_tables()
     key = family_table(thr)
+    key.update(mde_table(thr))
     arrival_table()
     (OUT / "key_numbers.json").write_text(
         json.dumps(key, ensure_ascii=False, indent=2))
