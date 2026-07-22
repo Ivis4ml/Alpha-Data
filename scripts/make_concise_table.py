@@ -444,6 +444,31 @@ def mde_table(thr: float) -> dict[str, object]:
     return key
 
 
+# --------------------------------------------------------- 扩展轮总账
+def ext_table() -> None:
+    """扩展轮五块总账（t10_ext.tex），数字读 key_numbers_v2.json。"""
+    kp = OUT / "key_numbers_v2.json"
+    if not kp.exists():
+        return
+    k = json.loads(kp.read_text())
+    fe = k["family_ext"]
+    lines = [
+        f"v3 冻结轮（不变） & {fe['n_v3']:,} & "
+        f"{fe['threshold_v3']:.3f} \\\\",
+        f"$+$ 扩展品种 CF/I/IF（P5） & {fe['n_ext_products']:,} & \\\\",
+        f"$+$ 分散度矩族（P4） & {fe['n_dispersion']:,} & \\\\",
+        f"$+$ 分位注册终点 $k{{=}}15$（P3） & {fe['n_quantile_k15']:,} "
+        f"& \\\\",
+        "\\midrule",
+        f"\\textbf{{扩展主族合计}} & \\textbf{{{fe['n_total']:,}}} & "
+        f"\\textbf{{{fe['threshold']:.3f}}} \\\\",
+    ]
+    (OUT / "t10_ext.tex").write_text(
+        "\\begin{tabular}{lrr}\n\\toprule\n"
+        "构成 & 检验数 & Bonferroni 门槛 \\\\\n\\midrule\n"
+        + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
+
+
 # --------------------------------------------------------- 全历史到达率
 def arrival_table() -> None:
     h = pd.read_parquet(DEF / "history_monthly.parquet")
@@ -478,6 +503,7 @@ def main() -> int:
     thr = grid_tables()
     key = family_table(thr)
     key.update(mde_table(thr))
+    ext_table()
     arrival_table()
     (OUT / "key_numbers.json").write_text(
         json.dumps(key, ensure_ascii=False, indent=2))

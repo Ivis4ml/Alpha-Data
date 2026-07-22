@@ -337,7 +337,7 @@
 \smallskip\noindent\textbf{（甲）时间与下标}
 \nopagebreak
 \begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
-\begin{tabular}{ll}
+\begin{tabular}{lp{11.2cm}}
 \toprule
 符号 & 含义 \\
 \midrule
@@ -356,7 +356,7 @@ $t^-$ & 读作"t 减"，指该市场上一次有成交的那一分钟 \\
 \smallskip\noindent\textbf{（乙）期货价量}
 \nopagebreak
 \begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
-\begin{tabular}{ll}
+\begin{tabular}{lp{11.2cm}}
 \toprule
 符号 & 含义 \\
 \midrule
@@ -374,7 +374,7 @@ $\Delta ts_u$ & 相邻两根 K 线的时间差 \\
 \smallskip\noindent\textbf{（丙）Polymarket 侧}
 \nopagebreak
 \begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
-\begin{tabular}{ll}
+\begin{tabular}{lp{11.2cm}}
 \toprule
 符号 & 含义 \\
 \midrule
@@ -393,7 +393,7 @@ $f_t,\,U_t,\,n_t,\,M_t$ & \textbf{该分钟}的签名流、成交额、笔数、
 \smallskip\noindent\textbf{（丁）归一化与信号}
 \nopagebreak
 \begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
-\begin{tabular}{ll}
+\begin{tabular}{lp{11.2cm}}
 \toprule
 符号 & 含义 \\
 \midrule
@@ -403,8 +403,8 @@ $\kappa_t$ & 稳健事件阈值 $=\max(3\times1.4826\times\mathrm{MAD}_{4800}(N1
 $\mathrm{MAD}$ & 中位数绝对偏差（抗极端值的波动度量）；$1.4826$ 把它折成正态标准差 \\
 $e_t$ & 签名事件指示 $=\mathbf{1}\{N1_t>\kappa_t\}-\mathbf{1}\{N1_t<-\kappa_t\}\in\{-1,0,1\}$ \\
 $C8_t$ & 未兑现缺口信号（PM 累积腿减期货反转腿，见第 \ref{sec:signal} 节） \\
-$U_w,\,D_w$ & 窗口 $w$ 分钟内上行 / 下行事件计数 $=\sum_{u=t-w+1}^{t}\mathbf{1}\{N1_u>\kappa_u\}$ / $\sum\mathbf{1}\{N1_u<-\kappa_u\}$（含当前分钟；用于 K8 的 $U_{120},D_{120}$ 与 X5 的 $U_{60},D_{60}$；\textbf{与成交额 $U_t$、方向 $D$ 同字不同义}） \\
-$\mathrm{rv}15_t$ & 15 分钟段内已实现波动 $=\sqrt{\sum_{u=t-14}^{t}r1_u^2}$（即 $v_t$ 取 $z_{4800}$ \emph{之前}的原始量，用于 X9） \\
+$U_w,\,D_w$ & 窗口 $w$ 分钟内上行 / 下行事件计数（$\sum\mathbf{1}\{N1_u>\kappa_u\}$ 与对称的下行式，含当前分钟；用于 K8 与 X5；\textbf{与成交额 $U_t$、方向 $D$ 同字不同义}） \\
+$\mathrm{rv}15_t$ & 15 分钟已实现波动 $\sqrt{\sum r1_u^2}$（$v_t$ 取 $z$ 前的原始量，用于 X9） \\
 $r_{t-2\to t}$ & 3 分钟段内收益 $=\sum_{u=t-2}^{t}r1_u=\ln C_t-\ln C_{t-3}$（用于 X9；跨段置缺失） \\
 $\mu_W(\cdot)$ & 窗口 $W$ 的滚动样本均值（与 $z_W$ 同窗、同为只用 $\le t$ 的观测；用于 C7 的 $\hat\beta_t$） \\
 \bottomrule
@@ -414,7 +414,7 @@ $\mu_W(\cdot)$ & 窗口 $W$ 的滚动样本均值（与 $z_W$ 同窗、同为只
 \smallskip\noindent\textbf{（戊）统计与通用记号}
 \nopagebreak
 \begin{center}\footnotesize\setlength{\tabcolsep}{5pt}
-\begin{tabular}{ll}
+\begin{tabular}{lp{11.2cm}}
 \toprule
 符号 & 含义 \\
 \midrule

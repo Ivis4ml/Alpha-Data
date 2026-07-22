@@ -1,0 +1,123 @@
+{
+  "locked": {
+    "SC": {
+      "true_lock_share": 0.01624,
+      "pseudo_lock_share": 0.00802,
+      "dropped_share_15": 0.01756
+    },
+    "AU": {
+      "true_lock_share": 0.00031,
+      "pseudo_lock_share": 0.0,
+      "dropped_share_15": 0.00056
+    },
+    "AG": {
+      "true_lock_share": 0.00772,
+      "pseudo_lock_share": 0.0,
+      "dropped_share_15": 0.00876
+    },
+    "CU": {
+      "true_lock_share": 0.00121,
+      "pseudo_lock_share": 0.00114,
+      "dropped_share_15": 0.00147
+    },
+    "M": {
+      "true_lock_share": 0.00287,
+      "pseudo_lock_share": 0.0,
+      "dropped_share_15": 0.00305
+    },
+    "CF": {
+      "true_lock_share": 0.0,
+      "pseudo_lock_share": 0.00012,
+      "dropped_share_15": 0.0
+    },
+    "I": {
+      "true_lock_share": 0.0,
+      "pseudo_lock_share": 0.00054,
+      "dropped_share_15": 0.0
+    },
+    "IF": {
+      "true_lock_share": 0.0,
+      "pseudo_lock_share": 0.0,
+      "dropped_share_15": 0.0
+    }
+  },
+  "clean_vs_raw": {
+    "pure_pm_max_t_raw": 3.24,
+    "pure_pm_max_t_clean": 3.244
+  },
+  "ext_products": {
+    "CF": {
+      "tests": 270,
+      "max_t": 12.873,
+      "pure_pm_tests": 150,
+      "pure_pm_max_t": 2.569
+    },
+    "I": {
+      "tests": 270,
+      "max_t": 17.183,
+      "pure_pm_tests": 150,
+      "pure_pm_max_t": 2.81
+    },
+    "IF": {
+      "tests": 258,
+      "max_t": 9.001,
+      "pure_pm_tests": 138,
+      "pure_pm_max_t": 1.966
+    }
+  },
+  "dispersion": {
+    "cells": 78,
+    "tests": 354,
+    "max_t": 3.994,
+    "max_cell": "D_hhi_metal_price·AG"
+  },
+  "quantile": {
+    "pairs_total": 215,
+    "pairs_eligible": 114,
+    "registered_tests_k15": 114,
+    "max_ls_t_15": 3.039,
+    "monotone_15_n": 5,
+    "strat_net_positive_n": 0,
+    "strat_net_bp_day_median": -172.08,
+    "strat_gross_bp_day_median": -0.47,
+    "breakeven_ratio_median": 47.53,
+    "pure_pm_max_ls_t_15": 1.877
+  },
+  "family_ext": {
+    "n_v3": 1476,
+    "n_ext_products": 798,
+    "n_dispersion": 354,
+    "n_quantile_k15": 114,
+    "n_total": 2742,
+    "threshold": 4.285,
+    "threshold_v3": 4.146,
+    "max_t_all": 17.183,
+    "n_pass": 73,
+    "pure_pm_n": 1646,
+    "pure_pm_max_t": 3.994,
+    "pure_pm_pass": 0,
+    "pass_families": [
+      "C"
+    ]
+  },
+  "gate": {
+    "candidates": 6,
+    "admitted": 0,
+    "median_passed": 4,
+    "detail": {
+      "D_disp": 4,
+      "D_cancel": 4,
+      "D_hhi": 3,
+      "D_sign_ratio": 4,
+      "D_head_share": 3,
+      "D_skew": 4
+    }
+  },
+  "mapping": {
+    "pairs": 166,
+    "products_mapped": 72,
+    "primary": 33,
+    "secondary": 94,
+    "exploratory": 39
+  }
+}

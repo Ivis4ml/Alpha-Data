@@ -135,6 +135,17 @@ def term_return(df: pd.DataFrame, idx: np.ndarray,
 
 def build(product: str) -> list[dict]:
     df = pd.read_parquet(DEF / f"panel_{product}.parquet")
+    return build_from_frame(df, product)
+
+
+def build_from_frame(df: pd.DataFrame, product: str,
+                     signals: list[str] | None = None) -> list[dict]:
+    """在给定面板上计算全信号网格（v4 复用入口：标签列可为 clean 口径）。
+
+    ``signals`` 为 None 时用默认 40 信号；否则评价给定列（如 v4 的
+    分散度矩族）。标签一律读 ``fwd_{h}`` 列，调用方可在传入前把 clean
+    口径换入同名列。
+    """
     days = df["trade_date"].nunique()
     months = days / TRADING_DAYS_PER_MONTH
     dayarr = df["trade_date"].to_numpy()
@@ -152,7 +163,7 @@ def build(product: str) -> list[dict]:
         }
 
     rows: list[dict] = []
-    for sig in SIGNALS:
+    for sig in (SIGNALS if signals is None else signals):
         if sig not in df.columns:
             continue
         s = df[sig].astype(float)
