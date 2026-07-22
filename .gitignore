@@ -8,6 +8,8 @@ data/
 *.parquet
 *.csv
 *.csv.gz
+# 冻结交付物豁免：品种分类表（manifest_v2 哈希锁定）
+!docs/product_taxonomy.csv
 *.feather
 
 # Python

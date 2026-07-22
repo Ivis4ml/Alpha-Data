@@ -1,0 +1,57 @@
+{
+  "meta": {
+    "purpose": "候选因子预期符号预注册；计算前未登记者不得进确认层",
+    "discipline": "既有条目不得修改；新增须带 registered_at",
+    "created_at": "2026-07-22"
+  },
+  "signs": {
+    "D_disp": {
+      "family": "dispersion",
+      "definition": "主题内定向创新的成交额加权标准差（分歧度）",
+      "direction_prior": 0,
+      "vol_channel": "+1",
+      "rationale": "分歧度对收益方向无先验；对已实现波动的先验为正",
+      "registered_at": "2026-07-22"
+    },
+    "D_cancel": {
+      "family": "dispersion",
+      "definition": "|Σ w·Δℓ| / Σ|w·Δℓ|（合并的抵消存活率，1=全同向）",
+      "direction_prior": 0,
+      "vol_channel": "0",
+      "rationale": "作为 N1 方向的调节项使用，本身无方向先验",
+      "registered_at": "2026-07-22"
+    },
+    "D_hhi": {
+      "family": "dispersion",
+      "definition": "主题内市场成交额份额的 Herfindahl 集中度",
+      "direction_prior": 0,
+      "vol_channel": "0",
+      "rationale": "衡量信息集中于单一市场还是普遍，本身无方向先验",
+      "registered_at": "2026-07-22"
+    },
+    "D_sign_ratio": {
+      "family": "dispersion",
+      "definition": "主题内创新多数符号占比",
+      "direction_prior": 0,
+      "vol_channel": "0",
+      "rationale": "方向一致性调节项，无独立方向先验",
+      "registered_at": "2026-07-22"
+    },
+    "D_head_share": {
+      "family": "dispersion",
+      "definition": "头部市场对主题创新的贡献占比",
+      "direction_prior": 0,
+      "vol_channel": "0",
+      "rationale": "信息来源结构，无方向先验",
+      "registered_at": "2026-07-22"
+    },
+    "D_skew": {
+      "family": "dispersion",
+      "definition": "主题内定向创新的偏度",
+      "direction_prior": 0,
+      "vol_channel": "0",
+      "rationale": "极端市场拉动 vs 普遍位移的形状量，无方向先验",
+      "registered_at": "2026-07-22"
+    }
+  }
+}
