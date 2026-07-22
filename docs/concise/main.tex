@@ -229,8 +229,11 @@ Lee--Ready 式推断。}判据按协议版本分列：
 SELL 占 86.3\%}。这不是市场情绪，而是挂单方约 87\% 在买方的机械
 结果。真正平衡且可用的方向量是 $D$：
 \[
-D \eqdef \mathrm{sign}(\code{taker\_direction})\times
-\mathrm{sign}(\code{outcome\_seq}),
+D \eqdef d_{\mathrm{tk}}\times d_{\mathrm{side}},\quad
+d_{\mathrm{tk}}=\begin{cases}+1,&\text{BUY}\\-1,&\text{SELL}\end{cases}
+\quad
+d_{\mathrm{side}}=\begin{cases}+1,&\code{outcome\_seq}=1\ (\text{Yes 侧})\\
+-1,&\code{outcome\_seq}=2\ (\text{No 侧}),\end{cases}
 \]
 即\textbf{这笔主动成交本身的方向}：主动买 Yes 或主动卖 No 记为"押事件
 会发生"（$+1$），主动卖 Yes 或主动买 No 记为"押事件不会发生"（$-1$）。
@@ -347,8 +350,11 @@ $\sigma\times\mathrm{orientation}$ 在每个（主题, 品种）对内为常数�
 
 \begin{table}[h!]\centering\small
 \caption{登记主题的全历史事件到达率（2023-09..2026-07，35 个月）。
-事件 $=$ 分钟创新超稳健阈值 $\kappa$；这是唯一可给出多年口径的频率
-统计，期货侧只有 125 天}\label{tab:arrival}
+\textbf{本表口径与正文分钟面板不同}：事件为\emph{市场级} 15 分钟桶
+$|\Delta\ell|>0.10$ 的\textbf{固定阈值}（非 $\kappa$，因 $\kappa$ 依赖
+逐品种滚动窗、无法回溯到无期货数据的年份），市场集为\emph{全历史 slug
+规则命中}（非 492 个登记市场，故"市场"列大于登记库，如俄乌 117 对 53）。
+这是唯一可给出多年口径的频率统计，期货侧只有 125 天}\label{tab:arrival}
 \input{t7_arrival}
 \end{table}
 
@@ -364,13 +370,22 @@ $\sigma\times\mathrm{orientation}$ 在每个（主题, 品种）对内为常数�
   加权平均}（VWAP），
   $\bar p_{m,t}=\sum_i p_i u_i / \sum_i u_i$（$u_i$ 为该笔名义额）。
   \textbf{须如实声明口径差异}：本文分钟面板（即全部 40 个信号所用的
-  $N1$）走的是此 VWAP 口径，\textbf{不做}按 taker 方向分堆的显式去跳动；
-  桶内多笔成交的加权平均只是\emph{隐含地}平抑了买卖跳动。按方向分堆取
-  加权中位数再平均的显式去跳动，实现于\textbf{另一条}管道
-  （\code{cn\_features.aggregate\_price}，15 分钟桶），仅用于第
-  \ref{sec:results} 节的闭市吸收分析，不用于本节的分钟信号库。
-\item \textbf{过时报价}（防用陈旧价冒充新信息）：端点价取最后成交
-  （LOCF），距最后成交超过 120 分钟记缺失（\code{p\_age} 规则）。
+  $N1$）走的是此 VWAP 口径，\textbf{不做}按方向分堆的显式去跳动；
+  桶内多笔成交的加权平均只是\emph{隐含地}平抑了买卖跳动。按\textbf{方向
+  $D$}（押事件发生 / 不发生，见 §\ref{sec:dir}；在事件概率轴上它即买卖
+  方向，注意\emph{不是}原始 \code{taker\_direction}）分堆取加权中位数
+  再平均的显式去跳动，实现于\textbf{另一条}管道
+  （\code{cn\_features.aggregate\_price}，15 分钟桶），用于\textbf{两处}：
+  第 \ref{sec:results} 节的闭市吸收分析，与 §\ref{sec:signal} 另行登记的
+  J 族事件跳检测（\code{v3\_jump\_factors.py} 调用同一函数）；
+  \textbf{不用于}本节的分钟信号库（40 信号面板）。
+\item \textbf{过时报价}（防用陈旧价冒充新信息）：\textbf{此规则属
+  窗口级管道，本节的 $N1$ 不设}。\code{cn\_features.aggregate\_price}
+  （15 分钟桶）对窗口端点价取最后成交（LOCF）、距最后成交超过 120 分钟
+  记缺失（\code{p\_age} 规则）；而分钟面板的 $N1$ 直接对该市场
+  \emph{上一次有成交的分钟} $t^-$ 差分，$t-t^-$ \textbf{不设上限}，
+  长间隔后的 $\Delta\ell$ 在后一分钟全额计入。其防护仅在于差分本身
+  不会把陈旧价当作新观测重复计数。
 \item \textbf{主题聚合}（防小市场噪声主导）：市场层创新 $\Delta\ell_m$
   按 $w_m=\mathrm{orientation}_m\sqrt{\mathrm{cumUSDC}_m}$ 加权，
   其中累计成交额为\textbf{时点化累计}（仅用 $\le t$ 的成交）：
@@ -428,14 +443,18 @@ $T+1$ 交易日}，即夜盘在一个交易日内\emph{先于}日盘。测试断
 \mathrm{seg}_t \eqdef \textstyle\sum_{u\le t}
 \mathbf{1}\{\Delta ts_u \ne 1\text{min}\},\qquad
 \mathrm{fwd}_{h,t} \eqdef
-\big(\ln C_{t+h}-\ln C_t\big)\cdot
-\mathbf{1}\{\mathrm{seg}_{t+h}=\mathrm{seg}_t\}.
+\begin{cases}
+\ln C_{t+h}-\ln C_t, & \mathrm{seg}_{t+h}=\mathrm{seg}_t,\\
+\text{缺失 (NaN)}, & \text{否则}.
+\end{cases}
 \]
 其中 $C_t$ 为期货这一分钟的收盘价（$C=$ close），$h$ 为前向分钟数
 （取 $1/2/3/5/10/15$），$\Delta ts_u$ 为相邻两根 K 线的时间差，
 $\mathbf{1}\{\cdot\}$ 是\textbf{指示函数}（括号内条件成立取 1、否则取
-0），$\mathrm{seg}_t$ 为连续段编号。读法：只有当 $t$ 与 $t+h$ 落在同一
-连续段（$\mathrm{seg}$ 相等）时才计算前向收益，否则乘以 0 记为缺失。
+0，此处用于 $\mathrm{seg}$ 的定义），$\mathrm{seg}_t$ 为连续段编号。
+读法：只有当 $t$ 与 $t+h$ 落在同一连续段时才定义前向收益，\textbf{跨段
+一律记缺失（NaN）而非取 0}——0 是合法收益值，跨段行不进入任何 IC 与事件
+统计（这也正是下文"有效占比 $=1-15\times495/N$"成立的前提）。
 该规则对上午小节休息（10:15$\to$10:30）、午间休市（11:30$\to$13:30）、
 日盘收至夜盘开（15:00$\to$21:00）、夜盘收至次日开盘、周末与假日
 \textbf{一视同仁}，跨段一律置缺失而非跨越。\textbf{任何前向收益都不
@@ -541,7 +560,9 @@ u_t &= z_{4800}\Big(\sum_{u=t-14}^{t} V_u\Big), &
 a_t &= z_{4800}\Big(\sum_{u=t-14}^{t} A_u\Big);
 \end{aligned}
 \]
-$f_t, U_t, n_t, M_t$ 为 15 分钟签名流、成交额、笔数与活跃市场数；
+$f_t, U_t, n_t, M_t$ 为\textbf{该分钟}的签名流（orientation 定向、
+以美元计）、成交额、成交笔数与活跃市场数（\emph{逐分钟量}；凡 15 分钟
+聚合一律由公式中的 $\sum_{u=t-14}^{t}$ 显式给出，不重复求和）；
 $\kappa_t$ 为稳健事件阈值，
 \[
 \kappa_t = \max\big(3\times1.4826\times\mathrm{MAD}_{4800}(N1\!\neq\!0),\;
@@ -611,8 +632,11 @@ $\mathrm{orientation}\times\Delta\ell$。两个冻结登记单元：SC 盘中日
 $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已算但因分钟
 收益的厚尾而以 RankIC 为主口径。
 
-\paragraph{离散信号的事件研究口径。}对签名离散信号，取 $s_t=+1$
-（上行触发）的全部时点，报告：
+\paragraph{离散信号的事件研究口径。}取 $s_t>0$ 的全部时点为一次触发。
+11 个签名信号（K10、X1--X10）取值 $\{-1,0,+1\}$，故 $s_t>0$ 即
+$s_t=+1$、为上行触发；K5 是\textbf{无符号}游程长度，$s_t\in\{1,\dots,4\}$
+一律计为触发、不含方向。对签名信号\textbf{另按 $s_t<0$ 对称地做同一套
+检验}（同一无条件基准、同一日聚类 $t$），K5 的下行侧结构性为空。报告：
 \begin{itemize}
 \item \textbf{频率}：触发次数 $/$ 5.95 个月（125 交易日 $/21$）；
 \item \textbf{条件收益}：各视界 $\overline{\mathrm{fwd}_{h}}$，单位 bp；
@@ -624,19 +648,39 @@ $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已�
   $\overline{\mathrm{fwd}_h}$ 与 $P(|\mathrm{fwd}_h|>10\text{bp})$。
   须声明：因期货分钟数据只有 125 天，\textbf{无法构造"过去一年"
   的基准}，故用全样本无条件量代替；
-\item \textbf{检验}：$H_0:\ \mathbb{E}[\mathrm{fwd}_h\mid s=+1]=$ 基准
-  均值，$t$ 统计量按\textbf{交易日聚类}稳健估计（触发在时间上高度
+\item \textbf{检验}：$H_0:\ \mathbb{E}[\mathrm{fwd}_h\mid \text{触发}]=$
+  基准均值，$t$ 统计量按\textbf{交易日聚类}稳健估计（触发在时间上高度
   成簇，普通 $t$ 会严重高估显著性）。
 \end{itemize}
+
+\noindent\textbf{离散检验数 636 的来龙去脉}（此处的"上行 / 下行"指
+\emph{触发方向}，与假设检验的\emph{双侧}无关，勿混）：
+\[
+\underbrace{12}_{\text{离散信号}}\times
+\underbrace{5}_{\text{品种}}\times
+\underbrace{6}_{\text{视界}}\times
+\underbrace{2}_{\text{触发方向}} = 720,\qquad
+720 - \underbrace{84}_{\text{退化格}} = \mathbf{636}.
+\]
+退化格指该侧触发不足 10 次、或有效前向收益不足 10 行者（如 K5 的下行侧
+整体为空、X6$\cdot$AG 上行仅 6 次）。分族为 \textbf{K 族 78}
+（上行 54 $+$ 下行 24，下行仅来自 K10）与 \textbf{X 族 558}
+（上行 276 $+$ 下行 282）。表 \ref{tab:event} 出于篇幅\textbf{只展示
+上行侧且 $n\ge100$ 的格}，故同一信号$\cdot$品种在该表与表
+\ref{tab:grid} 的 $t$ 可以不同（后者在两侧取极值）。
 
 \subsection{全信号登记表}
 
 \begin{table}[h!]\centering\scriptsize
 \caption{40 个信号的登记全表：类型、频率、取值统计与跨品种 RankIC。
-"极值 $t$"取该信号在 5 个品种 $\times$ 6 视界共 30 个格中 $|t|$ 最大的
-那个格，\textbf{报其带符号的 $t$}（门槛判定仍按双侧 $|t|$，符号仅供读
-方向），括号内为对应品种；星号为跨过门槛 4.15。注意如 K7：RankIC 三元组
-偏正而极值格为负（$-3.24$），配合 53\% 的符号一致率即知其方向不连贯}
+\textbf{"极值 $t$"的搜索范围按类型不同}：连续与计数行在 5 品种 $\times$
+6 视界共 30 个 IC 格中取；\textbf{离散行在上行与下行触发 $\times$ 5 品种
+$\times$ 6 视界至多 60 个\emph{事件研究}格中取}（剔退化格），与
+§\ref{sec:mt} 声明的"离散用事件研究"一致。两者均\textbf{报带符号的 $t$}
+（门槛判定仍按双侧 $|t|$，符号仅供读方向），括号内为对应品种；星号为
+跨过门槛 4.15。\textbf{离散行的 RankIC$\times$100 列为符号 IC，仅作
+描述性登记、不参与门槛判定}。注意如 K7：RankIC 三元组偏正而极值格为负
+（$-3.24$），配合 53\% 的符号一致率即知其方向不连贯}
 \label{tab:grid}
 \input{t4_grid}
 \end{table}
@@ -652,7 +696,9 @@ $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已�
 \begin{figure}[h!]\centering
 \includegraphics[width=\textwidth]{fig/f2_ic_term.png}
 \caption{(a) RankIC 的期限结构热图；(b) 15 分钟视界的 ICIR。
-注意入选的 14 个格全部来自 C 族——即全部含期货侧量价腿。}
+注意入选的 14 个格（按六视界 $\max|t|$ 取前 14 的\emph{连续}信号格，
+同表 \ref{tab:ic}；其中 13 格跨过门槛 4.15，仅 C7$\cdot$AG 的
+$|t|=3.99$ 未过）全部来自 C 族——即全部含期货侧量价腿。}
 \label{fig:ic}
 \end{figure}
 
@@ -664,10 +710,13 @@ $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已�
 同品种无条件基准"，与右端 $\max|t|$ 所检验的量\textbf{完全一致}（$H_0$：
 超额为零）；毛收益与基准分量见图 \ref{fig:event}。"至下次"为终止条件
 视界收益，因持有分钟数逐次不同、无单一基准可减，故为\textbf{毛值}
-（括号内为平均持有分钟数）。末两列之前是另一口径：$P_{10'}$ 为 10 分钟
-内价格变动超 10bp 的\textbf{比例}（非收益），"基准"为同品种无条件同
-口径比例。"极值 $t$"报 $|t|$ 最大视界的\textbf{带符号} $t$（判定仍按
-双侧 $|t|$）}
+（括号内为平均持有分钟数）。"触发后""基准"两列（即末列"极值 $t$"之前
+的两列）为另一口径：$P_{10'}$ 是 10 分钟内价格变动超 10bp 的\textbf{比例}
+（非收益），"触发后"为触发样本的该比例、"基准"为同品种无条件同口径比例。
+"极值 $t$"报 $|t|$ 最大视界的\textbf{带符号} $t$（判定仍按双侧 $|t|$）。
+\textbf{本表只列上行侧}（$s>0$）且 $n\ge100$ 的格，极值 $t$ 亦只在上行
+6 视界内取；表 \ref{tab:grid} 在上下两侧取极值，故同一格两表可不同（如
+X5$\cdot$AU）。K5 为无符号游程，其"触发"不含方向}
 \label{tab:event}
 \input{t6_event}
 \end{table}
@@ -687,8 +736,10 @@ $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已�
 \textbf{这是本节最重要的结果。}
 
 \paragraph{每类信号按其适当口径检验。}连续与计数信号用 IC 的 $t$；
-\textbf{离散信号用事件研究的 $t$}，不用 IC。理由是离散信号取值只有
-$\{-1,0,+1\}$ 且九成以上为 $0$，在其上算秩相关会因海量并列而退化，
+\textbf{离散信号用事件研究的 $t$}，不用 IC。理由是：12 个离散信号中 11 个为签名型，取值只有 $\{-1,0,+1\}$ 且
+九成以上为 $0$（非零占比至多 8.29\%）；K5 为无符号游程长度，取值
+$\{0,1,2,3,4\}$、非零占比跨品种均值 26.70\%。两类在其上算秩相关都会因
+海量并列而退化，
 "触发之后是否真的动了"才是它的适当判据（§\ref{sec:stats} 的事件研究
 口径）。合计 $1{,}476$ 个检验（连续 IC 840 个 $+$ 离散事件 636 个），
 统一 Bonferroni 门槛 $|t|>4.15$。按族分解：
@@ -706,7 +757,10 @@ $\{-1,0,+1\}$ 且九成以上为 $0$，在其上算秩相关会因海量并列�
 \item \textbf{只用 Polymarket 数据构造的 23 个信号（N 族 10 个、K 族
   10 个、以及 X 族中不含期货腿的 X5/X7/X10），在 798 个检验中
   $\max|t|=3.24$，无一通过门槛。}
-\item \textbf{全部 13 个通过门槛的信号格（C1、C5、C8、C10 各若干品种）
+\item \textbf{全部 13 个通过门槛的信号格（C8 全部 5 品种、C5 全部
+  5 品种、C1$\cdot$CU、C1$\cdot$AG、C10$\cdot$AU；这 13 格合计 49 个
+  \emph{视界级}检验过线，即表 \ref{tab:mtsum} C 行的 49——本文"格"指
+  信号$\times$品种，"检验"指格$\times$视界，离散信号再分上 / 下行触发）
   无一例外来自 C 族，即无一例外含有期货侧量价腿}；\textbf{没有任何一个
   纯 Polymarket 信号格、也没有任何一个离散事件信号格通过}。C8 经双腿
   分解与严格增量检验，其强度由期货\textbf{自身的短期反转}承载，
@@ -871,7 +925,7 @@ $p<0.0005$；冲突高峰期内 / 外同号且期外更强（$0.35$ / $0.68$）�
 \toprule
 命题 & 证据 \\
 \midrule
-分钟级无纯 PM 信号 & 23 个纯 Polymarket 信号 $\times$ 798 检验，
+分钟级无纯 PM 信号 & 23 个纯 Polymarket 信号、共 798 个检验，
   $\max|t|=3.24 <$ 门槛 4.15（本文 \S\ref{sec:mt}，新算） \\
 日频方向不可预测 & 68 项预测检验 FDR 后全负；OOS 增量不为正；
   截面预测 IC $\approx 0$（三层互证） \\
@@ -960,9 +1014,17 @@ Fisher $p=0.007$、overlay 使 SC 持有回撤 $-53\%\to-31\%$，2027 年初
   （\S\ref{sec:session}）。
 \item 主力连续的换月判定规则由数据方决定，未公开、未核实。
 \item \textbf{分钟面板不做显式的买卖跳动去除}：桶内定价为成交额加权
-  平均（VWAP），按方向分堆取加权中位数的显式去跳动只用于 15 分钟窗口级
-  的吸收分析（\S\ref{sec:n1}）。故分钟级 $N1$ 中残留的微观结构噪声大于
-  窗口级，方向上使分钟级信号的信噪比\emph{偏低}、否定结论\emph{偏保守}。
+  平均（VWAP），按方向分堆取加权中位数的显式去跳动只用于 15 分钟桶的
+  管道（\S\ref{sec:n1}）。故分钟级 $N1$ 残留的微观结构噪声大于窗口级。
+  \textbf{须注意此处的方向性与直觉相反}：该噪声在 Polymarket 价格侧、
+  与期货收益无关，属\emph{预测变量的测量误差}，只会把实测 IC 向零衰减、
+  使检验\emph{偏向不拒绝}零假设。因此它\textbf{不能用来加强}"无信息"
+  这一否定结论（与 §\ref{sec:mde} 对 Bonferroni 的说明同理，形式上恰好
+  是反的）。相应地，§\ref{sec:mde} 的排除区间只对\emph{本口径构造的
+  含噪分钟信号}成立：若在更干净的去跳动口径下存在大于 MDE 的真实效应，
+  它仍可能被衰减到检出线以下，不在已排除之列。保守的只是\emph{零仓位
+  这一交易决策}，而非"无信息"这一认识论结论；去跳动口径的分钟信号留待
+  后续检验。
 \end{enumerate}
 
 \vspace{1em}

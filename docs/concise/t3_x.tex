@@ -7,11 +7,11 @@ X1 & 共振$+$期货确认 & $\displaystyle K10_t\cdot\mathbf{1}\{\mathrm{sign}(
 X2 & 共振但价未动 & $\displaystyle K10_t\cdot\mathbf{1}\{|m_t|<0.5\}$ & 共振而期货无反应，未兑现共振 \\
 X3 & 事件$\times$高波动 & $\displaystyle e_t\cdot\mathbf{1}\{v_t>1\}$ & 状态交互：波动放大期的事件 \\
 X4 & 事件$\times$放量 & $\displaystyle e_t\cdot\mathbf{1}\{u_t>1\}$ & 状态交互：成交放大期的事件 \\
-X5 & 一小时内同向二击 & $\displaystyle \mathbf{1}\{N1_t>\kappa_t, U_{60}\ge2\}-\mathbf{1}\{N1_t<-\kappa_t, D_{60}\ge2\}$ & 同向重复触发，过滤单次噪声 \\
-X6 & 大额$+$价未动 & $\displaystyle \mathrm{sign}(f_t)\cdot\mathbf{1}\{U_t>q_{0.99}\}\cdot\mathbf{1}\{|m_t|<0.5\}$ & 分钟成交额超展开 99 分位而期货未动 \\
+X5 & 一小时内同向二击 & $\displaystyle \mathbf{1}\{N1_t>\kappa_t, U_{60}\ge2\}-\mathbf{1}\{N1_t<-\kappa_t, D_{60}\ge2\};\ U_{60},D_{60}\text{ 同 K8 但窗口 }60$ & 同向重复触发，过滤单次噪声 \\
+X6 & 大额$+$价未动 & $\displaystyle \mathrm{sign}\big(\textstyle\sum_{u=t-14}^{t} f_u\big)\cdot\mathbf{1}\{U_t>q^{4800}_{0.99}\}\cdot\mathbf{1}\{|m_t|<0.5\}$ & 分钟成交额超 4800 分钟滚动 99 分位、且期货未动 \\
 X7 & 事件$\times$夜盘 & $\displaystyle e_t\cdot\mathbf{1}\{\text{夜盘}\}$ & 时段交互：夜盘与美东活跃时段重叠 \\
 X8 & 事件$\times$开盘 30 分钟 & $\displaystyle e_t\cdot\mathbf{1}\{\text{日盘前 30 分钟}\}$ & 时段交互：隔夜信息集中释放的窗口 \\
-X9 & 延迟反应 & $\displaystyle e_{t-3}\cdot\mathbf{1}\{|r_{t-2\to t}|<0.3\,\mathrm{rv}15_t\}$ & 3 分钟前有事件而价格仍未动，滞后交易的直接构造 \\
+X9 & 延迟反应 & $\displaystyle e_{t-3}\cdot\mathbf{1}\{|r_{t-2\to t}|<0.3\,\mathrm{rv}15_t\},\ r_{t-2\to t}\!=\!\ln C_t-\ln C_{t-3}$ & 3 分钟前有事件而价格仍未动，滞后交易的直接构造 \\
 X10 & 多尺度同向 & $\displaystyle e_t\cdot\mathbf{1}\{\mathrm{sign}(N1_t\,(N2_t-N1_t))>0\}$ & 当刻跳与此前 14 分钟累积同向，多尺度一致性确认 \\
 \bottomrule
 \end{tabular}

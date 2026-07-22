@@ -219,12 +219,18 @@ def fig3_event_study() -> None:
     tarr = np.abs(g[g["kind"] == "离散"][tcols].to_numpy(dtype=float))
     n_test = int(np.isfinite(tarr).sum())
     tmax_all = float(np.nanmax(tarr))
-    thr = float(stats.norm.ppf(1.0 - 0.05 / 2.0 / n_test))
+    # 门槛必须用全族 1476 个检验（连续 IC + 离散事件），与正文表 14 统一；
+    # 若只按离散族 636 算会得 3.95，与正文的 4.15 并存造成两个门槛。
+    ic_t = [f"ic_t_{h}" for h in HORIZONS]
+    n_cont = int(np.isfinite(
+        g[g["kind"] != "离散"][ic_t].to_numpy(dtype=float)).sum())
+    n_all = n_cont + n_test
+    thr = float(stats.norm.ppf(1.0 - 0.05 / 2.0 / n_all))
     fig.suptitle(f"离散信号触发后的收益路径（|t| 最大的 6 个格）："
                  f"两线之间的填色即超额收益（表 13 所印、也是 t 检验的量）。"
                  f"全部 {n_test} 个事件检验 max|t| = {tmax_all:.2f} < "
-                 f"Bonferroni 门槛 {thr:.2f}，无一通过", fontsize=7.0,
-                 x=0.01, ha="left")
+                 f"统一 Bonferroni 门槛 {thr:.2f}（全族 {n_all:,} 个检验），"
+                 f"无一通过", fontsize=7.0, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     out = FIG / "f3_event_study.png"
     fig.savefig(out, bbox_inches="tight")

@@ -9,7 +9,7 @@ C3 & 波动折减创新 & $\displaystyle N4_t\big/\big(1+\max(v_t,0)\big)$ & 高
 C4 & 创新$\times$放量 & $\displaystyle N4_t\cdot u_t$ & 成交量确认：有量的事件更可能推动价格 \\
 C5 & 流价同向 & $\displaystyle N3_t\cdot\mathbf{1}\{\mathrm{sign}(N3_t m_t)>0\}$ & 只在预测市场资金流与期货价格同向时取值 \\
 C6 & 创新$\times$波动状态 & $\displaystyle N4_t\cdot v_t$ & 波动状态交互，检验信息传导是否依赖市场状态 \\
-C7 & 正交化创新 & $\displaystyle N4_t-\hat\beta_t\, m_t,\quad \hat\beta_t=\tfrac{\mathrm{E}_{4800}[N4\,m]}{\mathrm{E}_{4800}[m^2]}$ & 滚动回归剔除动量分量，留下 Polymarket 的正交信息 \\
+C7 & 正交化创新 & $\displaystyle N4_t-\hat\beta_t\, m_t,\quad \hat\beta_t=\tfrac{\mu_{4800}[N4\,m]}{\mu_{4800}[m^2]}$ & 滚动回归剔除动量分量，留下 Polymarket 的正交信息 \\
 C8 & 未兑现缺口 & $\displaystyle z_{4800}\!\Big(\sum_{u=t-119}^{t} N1_u\Big)-z_{4800}\!\Big(\sum_{u=t-119}^{t} r1_u\Big)$ & 信念已动而价格未动的累积差；注意第二腿本身是反转因子 \\
 C9 & 不平衡$\times$成交额 & $\displaystyle N5_t\cdot a_t$ & 以期货成交额加权方向性占比，量价双重确认 \\
 C10 & 信念波动$-$实现波动 & $\displaystyle N9_t-v_t$ & 两个市场的波动预期之差，跨市场相对不确定度 \\

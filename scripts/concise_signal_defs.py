@@ -52,8 +52,8 @@ DEFS: dict[str, tuple[str, str, str]] = {
     "C6": ("创新$\\times$波动状态", r"N4_t\cdot v_t",
            "波动状态交互，检验信息传导是否依赖市场状态"),
     "C7": ("正交化创新", r"N4_t-\hat\beta_t\, m_t,\quad "
-                        r"\hat\beta_t=\tfrac{\mathrm{E}_{4800}[N4\,m]}"
-                        r"{\mathrm{E}_{4800}[m^2]}",
+                        r"\hat\beta_t=\tfrac{\mu_{4800}[N4\,m]}"
+                        r"{\mu_{4800}[m^2]}",
            "滚动回归剔除动量分量，留下 Polymarket 的正交信息"),
     "C8": ("未兑现缺口", r"z_{4800}\!\Big(\sum_{u=t-119}^{t} N1_u\Big)"
                         r"-z_{4800}\!\Big(\sum_{u=t-119}^{t} r1_u\Big)",
@@ -66,8 +66,9 @@ DEFS: dict[str, tuple[str, str, str]] = {
     "K1": ("净事件计数", r"\sum_{u=t-59}^{t} e_u",
            "1 小时窗内上行减下行事件数，最直接的频率统计"),
     "K2": ("分时频率异常",
-           r"\big(c_t-\mu_{h(t)}\big)\big/\sigma_{h(t)},\quad "
-           r"c_t=\textstyle\sum_{u=t-59}^{t}\mathbf{1}\{|N1_u|>\kappa_u\}",
+           r"\big(c_t-\mu_{\mathrm{hr}(t)}\big)\big/\sigma_{\mathrm{hr}(t)},\ "
+           r"c_t=\textstyle\sum_{u=t-59}^{t}\mathbf{1}\{|N1_u|>\kappa_u\};\ "
+           r"\mathrm{hr}(t)=t\text{ 所在小时桶}",
            "时序分桶：按小时分桶后标准化，剔除事件到达的日内季节性"),
     "K3": ("跨主题事件计数",
            r"\sum_{u=t-59}^{t}\sum_{\theta}\mathbf{1}\{|N1^{\theta}_u|>\kappa_u\}",
@@ -87,7 +88,8 @@ DEFS: dict[str, tuple[str, str, str]] = {
            "只累计超阈值部分的幅度，区分「多次小跳」与「一次大跳」"),
     "K8": ("方向一致率",
            r"\frac{U_{120}-D_{120}}{U_{120}+D_{120}},\ "
-           r"U_{120}=\textstyle\sum_{u=t-119}^{t}\mathbf{1}\{N1_u>\kappa_u\}",
+           r"U_{120}\!=\!\textstyle\sum_{u=t-119}^{t}\mathbf{1}\{N1_u\!>\!\kappa_u\},\ "
+           r"D_{120}\!=\!\textstyle\sum\mathbf{1}\{N1_u\!<\!-\kappa_u\}",
            "2 小时窗内方向纯度，取值有界于 $[-1,1]$"),
     "K9": ("到达率热度",
            r"\big(1+\mathrm{med}_{5}(\Delta\tau)\big)^{-1}",
@@ -109,19 +111,22 @@ DEFS: dict[str, tuple[str, str, str]] = {
            "状态交互：成交放大期的事件"),
     "X5": ("一小时内同向二击",
            r"\mathbf{1}\{N1_t>\kappa_t, U_{60}\ge2\}"
-           r"-\mathbf{1}\{N1_t<-\kappa_t, D_{60}\ge2\}",
+           r"-\mathbf{1}\{N1_t<-\kappa_t, D_{60}\ge2\};\ "
+           r"U_{60},D_{60}\text{ 同 K8 但窗口 }60",
            "同向重复触发，过滤单次噪声"),
     "X6": ("大额$+$价未动",
-           r"\mathrm{sign}(f_t)\cdot\mathbf{1}\{U_t>q_{0.99}\}"
+           r"\mathrm{sign}\big(\textstyle\sum_{u=t-14}^{t} f_u\big)"
+           r"\cdot\mathbf{1}\{U_t>q^{4800}_{0.99}\}"
            r"\cdot\mathbf{1}\{|m_t|<0.5\}",
-           "分钟成交额超展开 99 分位而期货未动"),
+           "分钟成交额超 4800 分钟滚动 99 分位、且期货未动"),
     "X7": ("事件$\\times$夜盘", r"e_t\cdot\mathbf{1}\{\text{夜盘}\}",
            "时段交互：夜盘与美东活跃时段重叠"),
     "X8": ("事件$\\times$开盘 30 分钟",
            r"e_t\cdot\mathbf{1}\{\text{日盘前 30 分钟}\}",
            "时段交互：隔夜信息集中释放的窗口"),
     "X9": ("延迟反应",
-           r"e_{t-3}\cdot\mathbf{1}\{|r_{t-2\to t}|<0.3\,\mathrm{rv}15_t\}",
+           r"e_{t-3}\cdot\mathbf{1}\{|r_{t-2\to t}|<0.3\,\mathrm{rv}15_t\},\ "
+            r"r_{t-2\to t}\!=\!\ln C_t-\ln C_{t-3}",
            "3 分钟前有事件而价格仍未动，滞后交易的直接构造"),
     "X10": ("多尺度同向",
             r"e_t\cdot\mathbf{1}\{\mathrm{sign}(N1_t\,(N2_t-N1_t))>0\}",

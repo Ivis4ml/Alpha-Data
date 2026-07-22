@@ -4,13 +4,13 @@
 信号 & 名称 & 公式 & 构造意图 \\
 \midrule
 K1 & 净事件计数 & $\displaystyle \sum_{u=t-59}^{t} e_u$ & 1 小时窗内上行减下行事件数，最直接的频率统计 \\
-K2 & 分时频率异常 & $\displaystyle \big(c_t-\mu_{h(t)}\big)\big/\sigma_{h(t)},\quad c_t=\textstyle\sum_{u=t-59}^{t}\mathbf{1}\{|N1_u|>\kappa_u\}$ & 时序分桶：按小时分桶后标准化，剔除事件到达的日内季节性 \\
+K2 & 分时频率异常 & $\displaystyle \big(c_t-\mu_{\mathrm{hr}(t)}\big)\big/\sigma_{\mathrm{hr}(t)},\ c_t=\textstyle\sum_{u=t-59}^{t}\mathbf{1}\{|N1_u|>\kappa_u\};\ \mathrm{hr}(t)=t\text{ 所在小时桶}$ & 时序分桶：按小时分桶后标准化，剔除事件到达的日内季节性 \\
 K3 & 跨主题事件计数 & $\displaystyle \sum_{u=t-59}^{t}\sum_{\theta}\mathbf{1}\{|N1^{\theta}_u|>\kappa_u\}$ & 截面统计：同一宏观冲击在多主题同时触发的计数 \\
 K4 & 指数衰减强度 & $\displaystyle K4_t=\lambda K4_{t-1}+e_t,\quad \lambda=e^{-1/30}$ & 半衰期约 21 分钟的加权累计，近期事件权重更高 \\
 K5 & 同向连发长度 & $\displaystyle \max_{u\in[t-29,t]} L_u,\ L_u=\text{连续同向事件游程长}$ & 游程统计：连续同向触发是趋势性信息的标志 \\
 K6 & 近因得分 & $\displaystyle e^{-g_t/60}\cdot\mathrm{sign}(e_{\tau(t)}),\ g_t=t-\tau(t)\ (\text{上次事件})$ & 距上次事件越近权重越高，把离散事件转为连续衰减值 \\
 K7 & 尾部幅度和 & $\displaystyle z_{4800}\!\Big(\sum_{u=t-59}^{t}|N1_u|\mathbf{1}\{|N1_u|>\kappa_u\}\Big)$ & 只累计超阈值部分的幅度，区分「多次小跳」与「一次大跳」 \\
-K8 & 方向一致率 & $\displaystyle \frac{U_{120}-D_{120}}{U_{120}+D_{120}},\ U_{120}=\textstyle\sum_{u=t-119}^{t}\mathbf{1}\{N1_u>\kappa_u\}$ & 2 小时窗内方向纯度，取值有界于 $[-1,1]$ \\
+K8 & 方向一致率 & $\displaystyle \frac{U_{120}-D_{120}}{U_{120}+D_{120}},\ U_{120}\!=\!\textstyle\sum_{u=t-119}^{t}\mathbf{1}\{N1_u\!>\!\kappa_u\},\ D_{120}\!=\!\textstyle\sum\mathbf{1}\{N1_u\!<\!-\kappa_u\}$ & 2 小时窗内方向纯度，取值有界于 $[-1,1]$ \\
 K9 & 到达率热度 & $\displaystyle \big(1+\mathrm{med}_{5}(\Delta\tau)\big)^{-1}$ & 最近 5 次事件间隔中位数的倒数，泊松强度的稳健估计 \\
 K10 & 跨主题共振 & $\displaystyle \mathbf{1}\Big\{\textstyle\sum_{\theta}\max_{u\in[t-14,t]}\mathbf{1}\{|N1^{\theta}_u|>\kappa_u\}\ge 2\Big\}\cdot\mathrm{sign}(N2_t)$ & 至少两个主题在 15 分钟内同时触发，签名化为 $\{-1,0,1\}$ \\
 \bottomrule
