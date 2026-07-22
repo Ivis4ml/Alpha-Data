@@ -156,6 +156,30 @@ def bonferroni(n: int, alpha: float = 0.05) -> float:
     return float(stats.norm.ppf(1.0 - alpha / 2.0 / max(n, 1)))
 
 
+#: 30 个独立格在纯噪声下符号一致率的期望（多数符号占比）。
+NULL_CONSISTENCY = float(
+    np.sum(stats.binom.pmf(np.arange(31), 30, 0.5)
+           * np.maximum(np.arange(31), 30 - np.arange(31))) / 30.0)
+
+
+def sign_consistency(sub: pd.DataFrame) -> float:
+    """信号方向一致率：跨品种 x 视界诸格中占多数的符号的占比。
+
+    ``max|t|`` 是双侧筛选，会丢掉方向信息：一个 h=1 为正、h=15 为负的
+    信号仍可能报出较大的 ``max|t|``，但它没有连贯方向、多半是噪声。
+    本指标补上这一维：纯噪声下约 {:.0%}（30 独立格），真信号趋近 100%。
+    离散信号用事件研究的超额收益取符号，与其适当口径一致。
+    """
+    cols = ([f"up_excess_{h}" for h in HORIZONS]
+            if (sub["kind"] == "离散").all() else
+            [f"ic_s_{h}" for h in HORIZONS])
+    a = sub[cols].to_numpy(dtype=float).ravel()
+    a = a[np.isfinite(a) & (a != 0.0)]
+    if len(a) < 6:
+        return float("nan")
+    return float(max((a > 0).sum(), (a < 0).sum()) / len(a))
+
+
 # --------------------------------------------------------- 全信号登记表
 def grid_tables() -> float:
     """写出表 4/5/6，返回适当口径下的全局 Bonferroni 门槛（供族级表复用）。"""
@@ -195,16 +219,19 @@ def grid_tables() -> float:
             tmax = float(per_prod.max())
             best = sub.loc[per_prod.idxmax(), "product"]
             mark = "$^{\\ast}$" if tmax > thr else ""
+            cons = sign_consistency(sub)
+            cs = "--" if not np.isfinite(cons) else f"{cons:.0%}"
             lines.append(
                 f"{sig} & {kind} & {freq} & {stat} & {ic} & "
-                f"{tmax:.2f}{mark} ({best}) \\\\".replace("%", "\\%"))
+                f"{tmax:.2f}{mark} ({best}) & {cs} \\\\".replace("%", "\\%"))
         if fam != "X":
             lines.append("\\addlinespace")
     (OUT / "t4_grid.tex").write_text(
-        "\\setlength{\\tabcolsep}{3.5pt}\n"
-        "\\begin{tabular}{lllllr}\n\\toprule\n"
+        "\\setlength{\\tabcolsep}{3pt}\n"
+        "\\begin{tabular}{lllllrr}\n\\toprule\n"
         "信号 & 类型 & 月频（均） & 取值统计（跨品种均） & "
-        "RankIC$\\times$100 (1'/5'/15') & 最大 $|t|$ \\\\\n\\midrule\n"
+        "RankIC$\\times$100 (1'/5'/15') & 最大 $|t|$ & 符号一致率 "
+        "\\\\\n\\midrule\n"
         + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
 
     # ---- 表 5：连续信号六视界明细 ----
@@ -300,6 +327,19 @@ def family_table(thr: float) -> dict[str, object]:
         if len(v) and v.max() > thr:
             cells.append((r["signal"], r["product"], float(v.max())))
     total = proper_t(g)
+
+    # 方向一致性：max|t| 是双侧筛选、丢掉方向，此处补上并定位纯 PM 侧的
+    # 最强格究竟是不是一个方向连贯的信号。
+    pm_sig = sorted({s for s in PURE_PM if (g["signal"] == s).any()})
+    best_pm, best_pm_t = None, -1.0
+    for s in pm_sig:
+        v = proper_t(g[g["signal"] == s])
+        if len(v) and v.max() > best_pm_t:
+            best_pm, best_pm_t = s, float(v.max())
+    cons_pm = {s: sign_consistency(g[g["signal"] == s]) for s in pm_sig}
+    cons_c = {s: sign_consistency(g[g["signal"] == s])
+              for s in (f"C{i}" for i in range(1, 11))}
+
     return {
         "threshold": thr,
         "n_tests": len(total),
@@ -308,6 +348,15 @@ def family_table(thr: float) -> dict[str, object]:
         "pass_families": sorted({c[0][0] for c in cells}),
         "pure_pm_max_t": float(pure.max()),
         "pure_pm_tests": len(pure),
+        # 方向一致性
+        "null_consistency": round(NULL_CONSISTENCY, 4),
+        "pure_pm_best_signal": best_pm,
+        "pure_pm_best_t": round(best_pm_t, 2),
+        "pure_pm_best_consistency": round(float(cons_pm.get(best_pm,
+                                                           float("nan"))), 4),
+        "pure_pm_median_consistency": round(
+            float(np.nanmedian(list(cons_pm.values()))), 4),
+        "c8_consistency": round(float(cons_c.get("C8", float("nan"))), 4),
     }
 
 
