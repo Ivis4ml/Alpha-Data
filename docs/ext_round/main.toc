@@ -1,0 +1,22 @@
+\contentsline {section}{\numberline {1}意见与实施的对应}{2}{section.1}%
+\contentsline {section}{\numberline {2}P1：映射的事前判定（回应意见 3）}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}问题与设计}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}与 v3 的一致性（构建时断言）}{3}{subsection.2.2}%
+\contentsline {section}{\numberline {3}P2：涨跌停的正确处理（回应意见 4d）}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}定义}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}回归门与结果}{4}{subsection.3.2}%
+\contentsline {section}{\numberline {4}P5：品种扩展 5 到 8（回应意见 4a）}{4}{section.4}%
+\contentsline {section}{\numberline {5}P4：分散度矩族——把合并丢掉的信息还原（回应意见 1、2）}{5}{section.5}%
+\contentsline {subsection}{\numberline {5.1}诊断}{5}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}定义（固定 6 列，维数不随市场数增长）}{5}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}纪律与结果}{6}{subsection.5.3}%
+\contentsline {section}{\numberline {6}P3：top-bottom 分位与成本净边界（回应意见 5、6）}{7}{section.6}%
+\contentsline {subsection}{\numberline {6.1}分档（严格历史断点，防前视）}{7}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}三套判据}{7}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}结果}{7}{subsection.6.3}%
+\contentsline {section}{\numberline {7}P6：因子质量七关门控（回应意见 6）}{7}{section.7}%
+\contentsline {section}{\numberline {8}扩展主族总账与结论}{9}{section.8}%
+\contentsline {subsection}{\numberline {8.1}总账}{9}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}结论}{9}{subsection.8.2}%
+\contentsline {paragraph}{诚实声明。}{9}{paragraph*.13}%
+\contentsline {section}{\numberline {9}复现}{10}{section.9}%
