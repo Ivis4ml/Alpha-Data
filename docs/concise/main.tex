@@ -360,8 +360,15 @@ $\sigma\times\mathrm{orientation}$ 在每个（主题, 品种）对内为常数�
 \item \textbf{截断与变换}（防端点发散）：$p$ 截断到 $[0.02, 0.98]$
   后取 $\ell(p)=\ln\frac{p}{1-p}$。临近结算时概率贴近 0/1，未截断的
   logit 会发散；消融显示结论对截断位置不敏感。
-\item \textbf{买卖跳动去除}（防微观结构噪声）：分钟桶内按 taker 方向
-  分堆取加权中位数再平均。逐笔价在买一与卖一间跳动不代表概率变化。
+\item \textbf{桶内定价}（防单笔极端值主导）：分钟桶内取\textbf{成交额
+  加权平均}（VWAP），
+  $\bar p_{m,t}=\sum_i p_i u_i / \sum_i u_i$（$u_i$ 为该笔名义额）。
+  \textbf{须如实声明口径差异}：本文分钟面板（即全部 40 个信号所用的
+  $N1$）走的是此 VWAP 口径，\textbf{不做}按 taker 方向分堆的显式去跳动；
+  桶内多笔成交的加权平均只是\emph{隐含地}平抑了买卖跳动。按方向分堆取
+  加权中位数再平均的显式去跳动，实现于\textbf{另一条}管道
+  （\code{cn\_features.aggregate\_price}，15 分钟桶），仅用于第
+  \ref{sec:results} 节的闭市吸收分析，不用于本节的分钟信号库。
 \item \textbf{过时报价}（防用陈旧价冒充新信息）：端点价取最后成交
   （LOCF），距最后成交超过 120 分钟记缺失（\code{p\_age} 规则）。
 \item \textbf{主题聚合}（防小市场噪声主导）：市场层创新 $\Delta\ell_m$
@@ -920,6 +927,10 @@ Fisher $p=0.007$、overlay 使 SC 持有回撤 $-53\%\to-31\%$，2027 年初
 \item \code{locked} 仅为 $H=L$ 代理，且未参与任何过滤
   （\S\ref{sec:session}）。
 \item 主力连续的换月判定规则由数据方决定，未公开、未核实。
+\item \textbf{分钟面板不做显式的买卖跳动去除}：桶内定价为成交额加权
+  平均（VWAP），按方向分堆取加权中位数的显式去跳动只用于 15 分钟窗口级
+  的吸收分析（\S\ref{sec:n1}）。故分钟级 $N1$ 中残留的微观结构噪声大于
+  窗口级，方向上使分钟级信号的信噪比\emph{偏低}、否定结论\emph{偏保守}。
 \end{enumerate}
 
 \vspace{1em}
