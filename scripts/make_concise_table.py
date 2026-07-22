@@ -213,24 +213,29 @@ def grid_tables() -> float:
                         f"kurt {sub['kurt'].mean():+.1f}")
             ic = " / ".join(fnum(sub[f"ic_s_{h}"].mean() * 100, "+.2f")
                             for h in (1, 5, 15))
-            # 适当口径的最大 |t| 及其对应品种
+            # 极值 t：取 |t| 最大的格，但报其带符号的原值。门槛判定仍按
+            # |t|（双侧）；符号仅供读方向，避免「RankIC 三元组全正而极值
+            # 格实为负向」时的误导（如 K7）。
             cols = EV_T if kind == "离散" else IC_T
             per_prod = sub[cols].abs().max(axis=1)
-            tmax = float(per_prod.max())
-            best = sub.loc[per_prod.idxmax(), "product"]
-            mark = "$^{\\ast}$" if tmax > thr else ""
+            best_row = sub.loc[per_prod.idxmax()]
+            best = best_row["product"]
+            vals = best_row[cols].to_numpy(dtype=float)
+            t_star = float(vals[np.nanargmax(np.abs(vals))])
+            mark = "$^{\\ast}$" if abs(t_star) > thr else ""
             cons = sign_consistency(sub)
             cs = "--" if not np.isfinite(cons) else f"{cons:.0%}"
             lines.append(
                 f"{sig} & {kind} & {freq} & {stat} & {ic} & "
-                f"{tmax:.2f}{mark} ({best}) & {cs} \\\\".replace("%", "\\%"))
+                f"{t_star:+.2f}{mark} ({best}) & {cs} \\\\"
+                .replace("%", "\\%"))
         if fam != "X":
             lines.append("\\addlinespace")
     (OUT / "t4_grid.tex").write_text(
         "\\setlength{\\tabcolsep}{3pt}\n"
         "\\begin{tabular}{lllllrr}\n\\toprule\n"
         "信号 & 类型 & 月频（均） & 取值统计（跨品种均） & "
-        "RankIC$\\times$100 (1'/5'/15') & 最大 $|t|$ & 符号一致率 "
+        "RankIC$\\times$100 (1'/5'/15') & 极值 $t$ & 符号一致率 "
         "\\\\\n\\midrule\n"
         + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
 
@@ -264,12 +269,14 @@ def grid_tables() -> float:
     lines = []
     for _, r in top.iterrows():
         exc = " & ".join(fnum(r[f"up_excess_{h}"]) for h in HORIZONS)
+        vals = r[tcols].to_numpy(dtype=float)
+        t_star = float(vals[np.nanargmax(np.abs(vals))])  # 极值格的带符号 t
         lines.append(
             f"{r['signal']}$\\cdot${r['product']} & "
             f"{r['up_per_month']:.0f} & {exc} & "
             f"{fnum(r['up_ret_term'])} ({r['up_hold_term']:.0f}') & "
             f"{r['up_pmove_10']:.1%} & {r['base_p_move_10']:.1%} & "
-            f"{fnum(r['score'], '.2f')} \\\\".replace("%", "\\%"))
+            f"{t_star:+.2f} \\\\".replace("%", "\\%"))
     (OUT / "t6_event.tex").write_text(
         "\\setlength{\\tabcolsep}{3pt}\n"
         "\\begin{tabular}{lr" + "r" * len(HORIZONS) + "rrrr}\n\\toprule\n"
@@ -278,7 +285,7 @@ def grid_tables() -> float:
         "\\cmidrule(lr){3-8}\\cmidrule(lr){10-11}\n"
         "信号$\\cdot$品种 & 次/月 & "
         + " & ".join(f"{h}'" for h in HORIZONS)
-        + " & 毛值 & 触发后 & 基准 & $\\max|t|$ \\\\\n\\midrule\n"
+        + " & 毛值 & 触发后 & 基准 & 极值 $t$ \\\\\n\\midrule\n"
         + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
     return thr
 
@@ -336,6 +343,15 @@ def family_table(thr: float) -> dict[str, object]:
         v = proper_t(g[g["signal"] == s])
         if len(v) and v.max() > best_pm_t:
             best_pm, best_pm_t = s, float(v.max())
+    # 极值格的带符号 t（呈现方向用；门槛判定仍按 |t|）
+    sub = g[g["signal"] == best_pm]
+    signed_pool: list[float] = []
+    for _, r in sub.iterrows():
+        cols = EV_T if r["kind"] == "离散" else IC_T
+        signed_pool.extend(float(r[c]) for c in cols
+                           if np.isfinite(r[c]))
+    arr = np.asarray(signed_pool)
+    best_pm_t_signed = float(arr[np.argmax(np.abs(arr))])
     cons_pm = {s: sign_consistency(g[g["signal"] == s]) for s in pm_sig}
     cons_c = {s: sign_consistency(g[g["signal"] == s])
               for s in (f"C{i}" for i in range(1, 11))}
@@ -352,6 +368,7 @@ def family_table(thr: float) -> dict[str, object]:
         "null_consistency": round(NULL_CONSISTENCY, 4),
         "pure_pm_best_signal": best_pm,
         "pure_pm_best_t": round(best_pm_t, 2),
+        "pure_pm_best_t_signed": round(best_pm_t_signed, 2),
         "pure_pm_best_consistency": round(float(cons_pm.get(best_pm,
                                                            float("nan"))), 4),
         "pure_pm_median_consistency": round(

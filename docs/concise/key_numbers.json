@@ -11,6 +11,7 @@
   "null_consistency": 0.5722,
   "pure_pm_best_signal": "K7",
   "pure_pm_best_t": 3.24,
+  "pure_pm_best_t_signed": -3.24,
   "pure_pm_best_consistency": 0.5333,
   "pure_pm_median_consistency": 0.6,
   "c8_consistency": 1.0,
