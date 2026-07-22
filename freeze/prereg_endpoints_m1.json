@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "name": "M1 机制因子样板：分歧度预测波动",
+    "registered_at": "2026-07-22",
+    "discipline": "本规格在任何波动检验计算之前冻结并提交；符号先验已于 2026-07-22 在 prereg_signs.json 登记（D_disp.vol_channel=+1），当时未计算过任何波动相关统计量。本文件为追加，不修改 P1 冻结的任何文件。",
+    "status": "registered_before_computation"
+  },
+  "hypothesis": {
+    "mechanism": "主题内信念分歧先于价格波动：市场间对同一主题的定向创新分歧（D_disp）反映信息处理未完成，后续应实现更高的价格波动",
+    "expected_sign": "+1（D_disp 越高，未来已实现波动越高）",
+    "anchor_mechanism": "从已验证的闭市吸收机制外延：分歧是吸收未完成的状态量"
+  },
+  "endpoint": {
+    "factor": "D_disp_{theme}（P4 分散度矩族第一列，活跃市场数 K>=2）",
+    "target": "fwd_rv15 = sqrt(sum_{u=t+1..t+15} r1_u^2)，段内（seg_{t+15}==seg_t），前向窗口含真封板分钟则置缺失（真封板 r1=0 会人为压低波动）",
+    "primary_stat": "逐日日内 partial Spearman RankIC：每日内先把 D_disp 对 [1, rv15_z] 残差化（控制当前波动聚集），残差与 fwd_rv15 的 Spearman；日序列 t = mean/std*sqrt(有效日数)，有效日要求日内有效观测>=30 且残差非常数",
+    "secondary_descriptive": "raw RankIC（不控制当前波动，仅描述性）",
+    "horizon": "仅 15 分钟一个视界（不做视界搜索）",
+    "controls": "rv15_z（既有面板列，滚动 z 后的 15 分钟已实现波动）"
+  },
+  "family": {
+    "name": "M 族（波动目标，预注册独立族）",
+    "rationale": "目标变量为波动而非收益，与主族 A 的估计量不同，按既定先例（rv/gap 标签须各自预注册计数）独立成族；本族结论为更弱的不同主张，任何命中不推翻主族 A 的收益否定结论",
+    "n_tests": 13,
+    "test_units": "13 个 (品种, 主题) 对（SC:2, AU:3, AG:2, CU:2, M:1, CF:1, I:1, IF:1），由 P4 分散度数据的结构事前决定，与结果无关；数据不足的对记退化、不移出分母",
+    "threshold_rule": "双侧 Bonferroni：Phi^{-1}(1 - 0.05/2/13)，计算时由 scipy 现算",
+    "no_peeking": "本族 13 个检验一次性计算、一次性报告，不迭代"
+  },
+  "falsification": {
+    "conditional_prediction": "若机理为真（分歧=吸收未完成），效应应在事件近旁更强：把每日分钟按过去 60 分钟内是否发生过 |N1|>kappa 事件分为事件近旁/平静两组，预测各对的 partial IC(事件近旁) - partial IC(平静) 的中位数 > 0",
+    "status": "机理判别诊断，非 alpha 主张，不进族计数；方向不符即机理被证伪、因子降级，不得换说法保留"
+  },
+  "gates": {
+    "applicable": ["g1_prereg", "g2_coverage", "g3_orthogonal(即 primary 本身 |t|>=2)", "g4_monotone(D_disp 十分位对 fwd_rv15 档均值)", "g5_stability(跨对符号一致率>=60%)", "g7_no_lookahead(截尾重算不变性，P6 已证)"],
+    "not_applicable": "g6_cost：波动预测非直接交易主张，不适用；如实标注 N/A 而非记通过"
+  }
+}
