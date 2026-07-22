@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -126,9 +127,40 @@ def family_tables() -> None:
             + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
 
 
+# --------------------------------------------------------- 适当口径的检验统计
+IC_T = [f"ic_t_{h}" for h in HORIZONS]
+EV_T = [f"{d}_t_{h}" for d in ("up", "dn") for h in HORIZONS]
+
+
+def proper_t(sub: pd.DataFrame) -> np.ndarray:
+    """适当口径的 |t| 全集：连续 / 计数用 IC 的 t，离散用事件研究的 t。
+
+    离散信号取值只有 {-1,0,+1} 且九成以上为 0，在其上算秩相关并不适当；
+    其主判据是事件研究（触发后收益对品种无条件基准，按交易日聚类）。
+    """
+    parts: list[np.ndarray] = []
+    cont = sub[sub["kind"] != "离散"]
+    disc = sub[sub["kind"] == "离散"]
+    if len(cont):
+        parts.append(np.abs(cont[IC_T].to_numpy(dtype=float)).ravel())
+    if len(disc):
+        parts.append(np.abs(disc[EV_T].to_numpy(dtype=float)).ravel())
+    if not parts:
+        return np.empty(0)
+    a = np.concatenate(parts)
+    return a[np.isfinite(a)]
+
+
+def bonferroni(n: int, alpha: float = 0.05) -> float:
+    """n 个检验的双侧 Bonferroni 门槛。"""
+    return float(stats.norm.ppf(1.0 - alpha / 2.0 / max(n, 1)))
+
+
 # --------------------------------------------------------- 全信号登记表
-def grid_tables() -> None:
+def grid_tables() -> float:
+    """写出表 4/5/6，返回适当口径下的全局 Bonferroni 门槛（供族级表复用）。"""
     g = pd.read_parquet(DEF / "signal_grid.parquet")
+    thr = bonferroni(len(proper_t(g)))
 
     # ---- 表 4：40 信号 x 跨品种汇总 ----
     lines = []
@@ -151,12 +183,15 @@ def grid_tables() -> None:
                         f"kurt {sub['kurt'].mean():+.1f}")
             ic = " / ".join(fnum(sub[f"ic_s_{h}"].mean() * 100, "+.2f")
                             for h in (1, 5, 15))
-            tcol = [c for c in (f"ic_t_{h}" for h in HORIZONS)]
-            tmax = np.nanmax(np.abs(sub[tcol].to_numpy()))
-            best = sub.loc[sub[tcol].abs().max(axis=1).idxmax(), "product"]
+            # 适当口径的最大 |t| 及其对应品种
+            cols = EV_T if kind == "离散" else IC_T
+            per_prod = sub[cols].abs().max(axis=1)
+            tmax = float(per_prod.max())
+            best = sub.loc[per_prod.idxmax(), "product"]
+            mark = "$^{\\ast}$" if tmax > thr else ""
             lines.append(
                 f"{sig} & {kind} & {freq} & {stat} & {ic} & "
-                f"{tmax:.2f} ({best}) \\\\".replace("%", "\\%"))
+                f"{tmax:.2f}{mark} ({best}) \\\\".replace("%", "\\%"))
         if fam != "X":
             lines.append("\\addlinespace")
     (OUT / "t4_grid.tex").write_text(
@@ -206,6 +241,62 @@ def grid_tables() -> None:
         + " & ".join(f"{h}'" for h in HORIZONS)
         + " & 至下次 & $P_{10'}$ & 基准 & $\\max|t|$ \\\\\n\\midrule\n"
         + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
+    return thr
+
+
+# --------------------------------------------------------- 族级多重检验
+#: 每族的数据来源标注（决定该族的显著性可归因到哪一侧数据）。
+FAMILY_SOURCE = {
+    "N": "仅 Polymarket",
+    "K": "仅 Polymarket",
+    "X": "Polymarket $+$ 期货状态",
+    "C": "Polymarket $\\times$ 期货量价",
+}
+#: 不含任何期货腿的纯 Polymarket 信号（X 族中仅这三个不引用期货量价）。
+PURE_PM = ([f"N{i}" for i in range(1, 11)] + [f"K{i}" for i in range(1, 11)]
+           + ["X5", "X7", "X10"])
+
+
+def family_table(thr: float) -> dict[str, object]:
+    """族级多重检验汇总（适当口径），返回正文要引用的关键数字。"""
+    g = pd.read_parquet(DEF / "signal_grid.parquet")
+    lines = []
+    for fam in ("N", "K", "X", "C"):
+        a = proper_t(g[g["family"] == fam])
+        n_pass = int((a > thr).sum())
+        bold = "\\textbf{0}" if n_pass == 0 else f"{n_pass}"
+        lines.append(f"{fam} & {FAMILY_SOURCE[fam]} & {len(a)} & "
+                     f"{a.max():.2f} & {bold} \\\\")
+    pure = proper_t(g[g["signal"].isin(PURE_PM)])
+    lines.append("\\midrule")
+    lines.append(
+        f"\\multicolumn{{2}}{{l}}{{\\textbf{{仅用 Polymarket 数据的 "
+        f"{len(PURE_PM)} 个信号}}}} & \\textbf{{{len(pure)}}} & "
+        f"\\textbf{{{pure.max():.2f}}} & \\textbf{{0}} \\\\")
+    (OUT / "t8_family.tex").write_text(
+        "\\setlength{\\tabcolsep}{5pt}\n"
+        "\\begin{tabular}{llrrr}\n\\toprule\n"
+        "族 & 数据来源 & 检验数 & $\\max|t|$ & 通过门槛 \\\\\n\\midrule\n"
+        + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
+
+    # 通过门槛的格（适当口径），供正文引用
+    cells = []
+    for _, r in g.iterrows():
+        cols = EV_T if r["kind"] == "离散" else IC_T
+        v = np.abs(np.asarray([r[c] for c in cols], dtype=float))
+        v = v[np.isfinite(v)]
+        if len(v) and v.max() > thr:
+            cells.append((r["signal"], r["product"], float(v.max())))
+    total = proper_t(g)
+    return {
+        "threshold": thr,
+        "n_tests": len(total),
+        "n_pass_tests": int((total > thr).sum()),
+        "n_pass_cells": len(cells),
+        "pass_families": sorted({c[0][0] for c in cells}),
+        "pure_pm_max_t": float(pure.max()),
+        "pure_pm_tests": len(pure),
+    }
 
 
 # --------------------------------------------------------- 全历史到达率
@@ -239,9 +330,17 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     summary_tables()
     family_tables()
-    grid_tables()
+    thr = grid_tables()
+    key = family_table(thr)
     arrival_table()
-    print(f"written {OUT}/t2..t7 (11 files)")
+    (OUT / "key_numbers.json").write_text(
+        json.dumps(key, ensure_ascii=False, indent=2))
+    print(f"written {OUT}/t2..t8 (12 files)")
+    print(f"适当口径：{key['n_tests']} 个检验，门槛 |t|>{key['threshold']:.2f}，"
+          f"通过 {key['n_pass_tests']} 个检验 / {key['n_pass_cells']} 个格，"
+          f"全部来自 {'/'.join(key['pass_families'])} 族")
+    print(f"仅 PM 的 {len(PURE_PM)} 个信号：{key['pure_pm_tests']} 个检验，"
+          f"max|t|={key['pure_pm_max_t']:.2f}，通过 0")
     return 0
 
 

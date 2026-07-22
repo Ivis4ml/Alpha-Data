@@ -1,0 +1,11 @@
+{
+  "threshold": 4.145716068452729,
+  "n_tests": 1476,
+  "n_pass_tests": 49,
+  "n_pass_cells": 13,
+  "pass_families": [
+    "C"
+  ],
+  "pure_pm_max_t": 3.2396707573642307,
+  "pure_pm_tests": 798
+}

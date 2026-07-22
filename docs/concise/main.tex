@@ -41,10 +41,10 @@ K 线）在 125 个重叠交易日（2026-01-05 至 07-13）上对齐。
 
 核心结论：Polymarket 的信息含量真实存在，以\textbf{闭市时段的同期
 吸收}进入中国期货开盘价格，并在开盘后数分钟内耗尽。在分钟频率上，
-只用 Polymarket 数据构造的 23 个信号、684 个 IC 检验中\textbf{无一
-通过多重检验门槛}（$\max|t|=3.24 < 4.02$）；全部 15 个通过门槛的
-信号格\textbf{无一例外含有期货侧量价腿}，其增量经双腿分解归因于
-期货自身的短期反转。据此，\textbf{本研究不含已验证的可交易 alpha}，
+只用 Polymarket 数据构造的 23 个信号、798 个检验中\textbf{无一
+通过多重检验门槛}（$\max|t|=3.24 < 4.15$）；全部 13 个通过门槛的
+信号格\textbf{无一例外含有期货侧量价腿}（且无一为离散事件信号），
+其增量经双腿分解归因于期货自身的短期反转。据此，\textbf{本研究不含已验证的可交易 alpha}，
 实盘配置为零仓位。
 \end{abstract}
 
@@ -665,44 +665,45 @@ $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已�
 
 \subsection{多重检验下的族级结论}\label{sec:mt}
 
-\textbf{这是本节最重要的结果。}全部检验共 1{,}476 个（连续 IC 840 个
-$+$ 离散事件 636 个），Bonferroni 门槛 $|t|>4.02$（连续侧）与
-$|t|>3.95$（离散侧）。按族分解：
+\textbf{这是本节最重要的结果。}
+
+\paragraph{每类信号按其适当口径检验。}连续与计数信号用 IC 的 $t$；
+\textbf{离散信号用事件研究的 $t$}，不用 IC。理由是离散信号取值只有
+$\{-1,0,+1\}$ 且九成以上为 $0$，在其上算秩相关会因海量并列而退化，
+"触发之后是否真的动了"才是它的适当判据（§\ref{sec:stats} 的事件研究
+口径）。合计 $1{,}476$ 个检验（连续 IC 840 个 $+$ 离散事件 636 个），
+统一 Bonferroni 门槛 $|t|>4.15$。按族分解：
 
 \begin{table}[h!]\centering\small
-\caption{族级多重检验结论}\label{tab:mtsum}
-\begin{tabular}{llrrr}
-\toprule
-族 & 数据来源 & 检验数 & $\max|t|$ & 通过门槛 \\
-\midrule
-N（数值） & 仅 Polymarket & 300 & 2.69 & \textbf{0} \\
-K（离散统计） & 仅 Polymarket & 294 & 3.24 & \textbf{0} \\
-X（条件） & Polymarket $+$ 期货状态 & 282 & 5.20 & 2 \\
-C（量价组合） & Polymarket $\times$ 期货量价 & 300 & 12.85 & 52 \\
-\midrule
-\multicolumn{2}{l}{\textbf{仅用 Polymarket 数据的 23 个信号}}
-  & \textbf{684} & \textbf{3.24} & \textbf{0} \\
-\bottomrule
-\end{tabular}
+\caption{族级多重检验结论（各族按适当口径：连续用 IC、离散用事件研究；
+统一门槛 $|t|>4.15$。数据由 \code{make\_concise\_table.py} 从
+\code{signal\_grid.parquet} 计算）}\label{tab:mtsum}
+\input{t8_family}
 \end{table}
 
 \noindent 两句话读法：
 
 \begin{enumerate}
 \item \textbf{只用 Polymarket 数据构造的 23 个信号（N 族 10 个、K 族
-  10 个、以及 X 族中不含期货腿的 X5/X7/X10），在 684 个检验中
+  10 个、以及 X 族中不含期货腿的 X5/X7/X10），在 798 个检验中
   $\max|t|=3.24$，无一通过门槛。}
-\item \textbf{全部 15 个通过门槛的信号（去重后为 C1、C5、C8、C10 与
-  X1、X6）无一例外含有期货侧量价腿}，且通过门槛的两个 X 格
-  （X1$\cdot$SC、X6$\cdot$AG）也都含 $m_t$。C8 经双腿分解与严格增量
-  检验，其强度由期货\textbf{自身的短期反转}承载，Polymarket 腿的分钟
-  级增量已被否定（五品种全部未通过预设确认门槛）。
+\item \textbf{全部 13 个通过门槛的信号格（C1、C5、C8、C10 各若干品种）
+  无一例外来自 C 族，即无一例外含有期货侧量价腿}；\textbf{没有任何一个
+  纯 Polymarket 信号格、也没有任何一个离散事件信号格通过}。C8 经双腿
+  分解与严格增量检验，其强度由期货\textbf{自身的短期反转}承载，
+  Polymarket 腿的分钟级增量已被否定（五品种全部未通过预设确认门槛）。
 \end{enumerate}
 
-\noindent 因此分钟频率上的结论是干净的：\textbf{显著性来自期货侧，
-不来自 Polymarket 侧。}离散侧同样如此——636 个事件检验的
-$\max|t|=3.04$，低于门槛 3.95，且表 \ref{tab:event} 中的
-$P_{10'}$ 与基准比例几乎处处相当。
+\paragraph{一处必须交代的口径修正。}若对离散信号误用 IC 口径，
+X1$\cdot$SC 与 X6$\cdot$AG 会显示 $|t|=4.80$ 与 $5.20$、看似通过门槛；
+但改用适当的事件研究口径后二者分别只有 $1.10$ 与 $2.46$，均不通过。
+其中 X6$\cdot$AG 的上行触发\textbf{仅 6 次}，属退化格。这说明在
+$\{-1,0,+1\}$ 上算秩相关确实会产生假阳性，\textbf{报告采用事件研究口径后，
+离散侧通过门槛的格数为零}。
+
+\noindent 因此分钟频率上的结论是干净的：\textbf{显著性全部来自期货侧，
+没有一点来自 Polymarket 侧。}表 \ref{tab:event} 中离散信号的 $P_{10'}$
+与基准比例也几乎处处相当，与此一致。
 
 \subsection{规定格式登记表}
 
