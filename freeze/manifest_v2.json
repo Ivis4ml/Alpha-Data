@@ -1,0 +1,15 @@
+{
+  "frozen_at": "2026-07-22",
+  "git_commit_at_freeze": "94d38291a259c6910360781d76ba89a36cb34e16",
+  "purpose": "P1 事前映射强度表冻结：主族 Bonferroni 分母固定为本表预注册的最大 (主题, 品种) 对数；后续 gate 剪除映射不得回缩分母、不得下调门槛。",
+  "frozen": {
+    "docs/product_taxonomy.csv": "319257199658c8357e7e556f96962f9b9c2cdae18247415b5eee7df8e0584876",
+    "data/polymarket/features/tier_registry.parquet": "d0b9263687bfd566c3413107fab4ceb41cb04519a374c7312c3a9faf8cbc83c4",
+    "freeze/prereg_signs.json": "385d1b612c70ac16716d8cb678bc397d256752d333bf32c5890c8cf89534022c",
+    "scripts/v4_mapping_strength.py": "b2fe411486e431d013dd1e38b103973c612557a5de8cfb2aa07b5238f660d26e"
+  },
+  "readonly_deps": {
+    "data/polymarket/features/cn_registry_v3.parquet": "bf09bbc9a9114a7238c893b0c95858097746cbd2be35e77f517ac76887173ff0"
+  },
+  "disclaimer": "本冻结无第三方时间戳；判据与计算在同一仓库提交，仅可证明自冻结提交起未被篡改，不构成外部公证。"
+}
