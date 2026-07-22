@@ -226,26 +226,32 @@ def grid_tables() -> float:
         + " & ICIR$_{15}$ & $t_{15}$ \\\\\n"
         "\\midrule\n" + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
 
-    # ---- 表 6：离散信号事件研究 ----
+    # ---- 表 6：离散信号事件研究（一律报超额收益，与 t 检验的量一致）----
+    # 歧义修复：此前各视界列印毛收益，而同行的 max|t| 检验的是「条件均值
+    # 减品种无条件基准」。二者可反号（X6·AU 在 h=15 毛收益 -0.19 而超额
+    # +0.26、t=+0.13），读者无法把收益与 t 对上。现统一改印超额。
     disc = g[(g["kind"] == "离散") & (g["n_up"] >= 100)].copy()
     tcols = [f"up_t_{h}" for h in HORIZONS]
     disc["score"] = disc[tcols].abs().max(axis=1)
     top = disc.nlargest(14, "score")
     lines = []
     for _, r in top.iterrows():
-        rets = " & ".join(fnum(r[f"up_ret_{h}"]) for h in HORIZONS)
+        exc = " & ".join(fnum(r[f"up_excess_{h}"]) for h in HORIZONS)
         lines.append(
             f"{r['signal']}$\\cdot${r['product']} & "
-            f"{r['up_per_month']:.0f} & {rets} & "
+            f"{r['up_per_month']:.0f} & {exc} & "
             f"{fnum(r['up_ret_term'])} ({r['up_hold_term']:.0f}') & "
             f"{r['up_pmove_10']:.1%} & {r['base_p_move_10']:.1%} & "
             f"{fnum(r['score'], '.2f')} \\\\".replace("%", "\\%"))
     (OUT / "t6_event.tex").write_text(
         "\\setlength{\\tabcolsep}{3pt}\n"
         "\\begin{tabular}{lr" + "r" * len(HORIZONS) + "rrrr}\n\\toprule\n"
+        "& & \\multicolumn{6}{c}{\\textbf{超额收益}(bp)：条件均值 $-$ "
+        "同品种无条件基准} & 至下次 & \\multicolumn{2}{c}{$P_{10'}$ 超 10bp 比例} & \\\\\n"
+        "\\cmidrule(lr){3-8}\\cmidrule(lr){10-11}\n"
         "信号$\\cdot$品种 & 次/月 & "
         + " & ".join(f"{h}'" for h in HORIZONS)
-        + " & 至下次 & $P_{10'}$ & 基准 & $\\max|t|$ \\\\\n\\midrule\n"
+        + " & 毛值 & 触发后 & 基准 & $\\max|t|$ \\\\\n\\midrule\n"
         + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}\n")
     return thr
 

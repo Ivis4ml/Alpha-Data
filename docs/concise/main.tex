@@ -649,17 +649,25 @@ $D$ 为有效交易日数。Pearson IC 同式以线性相关代入，全表已�
 \subsection{离散信号：频率与事件研究}
 
 \begin{table}[h!]\centering\scriptsize
-\caption{离散信号事件研究（取 $+1$；$n\ge100$ 的格中 $\max|t|$ 前 14）。
-"至下次"为终止条件视界收益（括号内为平均持有分钟数），$P_{10'}$ 为
-10 分钟内价格变动超 10bp 的比例，"基准"为同品种无条件同口径比例}
+\caption{离散信号事件研究（取 $s>0$ 触发；$n\ge100$ 的格中 $\max|t|$ 前
+14）。\textbf{$1'$ 至 $15'$ 六列一律为超额收益}，即"触发后条件均值 $-$
+同品种无条件基准"，与右端 $\max|t|$ 所检验的量\textbf{完全一致}（$H_0$：
+超额为零）；毛收益与基准分量见图 \ref{fig:event}。"至下次"为终止条件
+视界收益，因持有分钟数逐次不同、无单一基准可减，故为\textbf{毛值}
+（括号内为平均持有分钟数）。末两列是另一口径：$P_{10'}$ 为 10 分钟内
+价格变动超 10bp 的\textbf{比例}（非收益），"基准"为同品种无条件同口径
+比例}
 \label{tab:event}
 \input{t6_event}
 \end{table}
 
 \begin{figure}[h!]\centering
 \includegraphics[width=\textwidth]{fig/f3_event_study.png}
-\caption{离散信号触发后的平均收益路径与同品种无条件基准的对照
-（$|t|$ 最大的 6 个格）。}
+\caption{离散信号触发后的收益路径（$|t|$ 最大的 6 个格）。
+\textbf{实线}为触发后条件均值（毛值），\textbf{虚线}为同品种无条件基准，
+\textbf{两线之间的填色即超额收益}（蓝 $=$ 正、红 $=$ 负），也就是表
+\ref{tab:event} 六列所印、以及 $\max|t|$ 所检验的那个量。本图与表
+\ref{tab:event} 的关系：本图给两个分量，表给二者之差。}
 \label{fig:event}
 \end{figure}
 
